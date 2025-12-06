@@ -1,5 +1,6 @@
 import time
 import sys
+from datetime import datetime, timedelta, timezone
 from src.core.interfaces import ExchangeInterface
 from src.adapters.asterdex import AsterdexAdapter
 from src.adapters.hyperliquid import HyperliquidAdapter
@@ -53,11 +54,16 @@ def main():
                 diff_ms = top_signal.next_funding_time - now_ms
                 minutes_left = max(0, int(diff_ms / 60000))
                 
+                # Calculate BKK time (UTC+7)
+                payout_dt_utc = datetime.fromtimestamp(top_signal.next_funding_time / 1000, tz=timezone.utc)
+                bkk_time = payout_dt_utc + timedelta(hours=7)
+                bkk_str = bkk_time.strftime("%H:%M")
+                
                 msg = (
                     f"🚀 **Opportunity Found: {top_signal.symbol}**\n"
                     f"💰 Monthly Return: {top_signal.projected_monthly_return*100:.2f}%\n"
                     f"↔️ Spread (8h): {top_signal.spread*100:.4f}%\n"
-                    f"⏳ Next Payout: in {minutes_left} mins\n"
+                    f"⏳ Next Payout: in {minutes_left} mins ({bkk_str} BKK)\n"
                     f"action: {top_signal.direction}\n"
                     f"(Long {top_signal.exchange_long} / Short {top_signal.exchange_short})"
                 )
