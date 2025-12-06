@@ -3,7 +3,7 @@ ASTERDEX_API_URL = "https://fapi.asterdex.com"
 HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
 
 # Strategy Settings
-MIN_MONTHLY_RETURN = 0.04  # 4%
+MIN_MONTHLY_RETURN = 0.02  # 2% (Target 4% with Lev x2)
 MIN_SPREAD_PER_ROUND = 0.0005 # 0.05% per 8h
 MIN_VOLUME_USDT = 500000 # 1M Daily Volume
 ESTIMATED_FEE_PER_ROTATION = 0.002 # 0.2% (Taker 0.05% x 4 legs)
