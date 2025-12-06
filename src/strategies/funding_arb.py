@@ -4,7 +4,7 @@ from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
 from ..config import (
     MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_USDT, ESTIMATED_FEE_PER_ROTATION,
-    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER
+    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST
 )
 
 class FundingArbitrageStrategy(StrategyInterface):
@@ -25,13 +25,16 @@ class FundingArbitrageStrategy(StrategyInterface):
             if not aster or not hl:
                 continue
 
+            is_watched = symbol in WATCHLIST
+            warning_msg = ""
+
             # Delist/Inactive Check
-            if ENABLE_DELIST_FILTER:
+            if ENABLE_DELIST_FILTER and not is_watched:
                 if not aster.is_active or not hl.is_active:
                     continue
 
             # Volume Check
-            if ENABLE_VOLUME_FILTER:
+            if ENABLE_VOLUME_FILTER and not is_watched:
                 if aster.volume_24h < MIN_VOLUME_USDT or hl.volume_24h < MIN_VOLUME_USDT:
                     continue
                 
@@ -46,8 +49,12 @@ class FundingArbitrageStrategy(StrategyInterface):
             monthly_net = monthly_gross - ESTIMATED_FEE_PER_ROTATION
             
             # Filter by Threshold
-            if monthly_net < MIN_MONTHLY_RETURN:
+            if monthly_net < MIN_MONTHLY_RETURN and not is_watched:
                 continue
+            
+            # Check for Negative/Warning for Watchlist
+            if is_watched and monthly_net < 0:
+                warning_msg = "⚠️ WARNING: Net Profit is NEGATIVE!"
                 
             # Determine Direction
             if hl.rate > aster.rate:
@@ -72,7 +79,9 @@ class FundingArbitrageStrategy(StrategyInterface):
                 spread=diff,
                 projected_monthly_return=monthly_net,
                 timestamp=int(time.time() * 1000),
-                next_funding_time=next_payout
+                next_funding_time=next_payout,
+                is_watchlist=is_watched,
+                warning=warning_msg
             ))
             
         # Sort by profitability

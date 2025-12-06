@@ -21,7 +21,9 @@ class Signal:
     spread: float
     projected_monthly_return: float
     timestamp: int
-    next_funding_time: int = 0
+    next_funding_time: int
+    is_watchlist: bool = False
+    warning: str = ""
 
 @dataclass
 class Order:

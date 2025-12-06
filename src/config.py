@@ -11,6 +11,7 @@ ESTIMATED_FEE_PER_ROTATION = 0.002 # 0.2% (Taker 0.05% x 4 legs)
 # Filter Settings
 ENABLE_VOLUME_FILTER = True
 ENABLE_DELIST_FILTER = True
+WATCHLIST = [] # Symbols to monitor regardless of profit (e.g. ["HEMI", "ETH"])
 
 # Execution Settings
 ENABLE_TRADING = False # SAFETY: Start with False (Alert Mode)
