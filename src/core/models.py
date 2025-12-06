@@ -8,6 +8,7 @@ class FundingRate:
     mark_price: float
     source: str
     timestamp: int
+    volume_24h: float = 0.0
 
 @dataclass
 class Signal:

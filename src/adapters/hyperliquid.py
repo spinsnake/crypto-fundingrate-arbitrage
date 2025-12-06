@@ -35,7 +35,8 @@ class HyperliquidAdapter(ExchangeInterface):
                     rate=float(ctx.get('funding', 0)),
                     mark_price=float(ctx.get('markPx', 0)),
                     source=self.get_name(),
-                    timestamp=int(time.time() * 1000)
+                    timestamp=int(time.time() * 1000),
+                    volume_24h=float(ctx.get('dayNtlVlm', 0))
                 )
             return rates
         except Exception as e:
@@ -50,3 +51,19 @@ class HyperliquidAdapter(ExchangeInterface):
         # TODO: Implement order placement
         print(f"[Hyperliquid] Mock Order Placed: {order}")
         return {"status": "mock_success", "order_id": "mock_456"}
+
+    def is_symbol_active(self, symbol: str) -> bool:
+        # Hyperliquid universe check
+        if not hasattr(self, '_active_symbols') or time.time() - getattr(self, '_last_update', 0) > 3600:
+            try:
+                response = requests.post(f"{self.base_url}/info", json={"type": "meta"}, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+                self._active_symbols = {a['name'] for a in data['universe']}
+                self._last_update = time.time()
+                print(f"[Hyperliquid] Updated active symbols: {len(self._active_symbols)}")
+            except Exception as e:
+                print(f"[Hyperliquid] Error checking status: {e}")
+                return True
+                
+        return symbol in self._active_symbols

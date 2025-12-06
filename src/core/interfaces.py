@@ -22,6 +22,11 @@ class ExchangeInterface(ABC):
         """Place an order on the exchange"""
         pass
 
+    @abstractmethod
+    def is_symbol_active(self, symbol: str) -> bool:
+        """Check if the symbol is currently trading and not delisted"""
+        pass
+
 class StrategyInterface(ABC):
     @abstractmethod
     def analyze(self, market_data: Dict[str, Dict[str, FundingRate]]) -> List[Signal]:

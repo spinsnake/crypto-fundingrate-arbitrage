@@ -2,7 +2,7 @@ from typing import List, Dict
 import time
 from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
-from ..config import MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND
+from ..config import MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_USDT
 
 class FundingArbitrageStrategy(StrategyInterface):
     def analyze(self, market_data: Dict[str, Dict[str, FundingRate]]) -> List[Signal]:
@@ -20,6 +20,10 @@ class FundingArbitrageStrategy(StrategyInterface):
             hl = rates.get('Hyperliquid')
             
             if not aster or not hl:
+                continue
+
+            # Volume Check
+            if aster.volume_24h < MIN_VOLUME_USDT or hl.volume_24h < MIN_VOLUME_USDT:
                 continue
                 
             # Calculate Spread
