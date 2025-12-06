@@ -30,13 +30,17 @@ class HyperliquidAdapter(ExchangeInterface):
                 symbol = asset["name"]
                 ctx = asset_ctxs[i]
                 
+                # Hyperliquid pays every hour on the hour
+                next_hour = (int(time.time() / 3600) + 1) * 3600 * 1000
+                
                 rates[symbol] = FundingRate(
                     symbol=symbol,
                     rate=float(ctx.get('funding', 0)),
                     mark_price=float(ctx.get('markPx', 0)),
                     source=self.get_name(),
                     timestamp=int(time.time() * 1000),
-                    volume_24h=float(ctx.get('dayNtlVlm', 0))
+                    volume_24h=float(ctx.get('dayNtlVlm', 0)),
+                    next_funding_time=next_hour
                 )
             return rates
         except Exception as e:

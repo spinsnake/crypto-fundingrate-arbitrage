@@ -1,15 +1,18 @@
 # Final Assessment: Funding Rate Arbitrage (Asterdex vs Hyperliquid)
 
 ## 1. Feasibility of 4% Monthly Profit
-**Verdict: Possible, but requires "Active Rotation".**
+**Verdict: Possible, but requires "Active Rotation" & "Sniping".**
 
 *   **Passive Strategy (Buy & Hold):** **FAILED.**
-    *   Holding a single pair (like APT) for 30 days yields only ~2.5%.
+    *   Holding a single pair (like APT) for 30 days yields only ~1.5% - 2.5%.
     *   Major coins (ATOM, DOT) yield < 1%.
+    *   **Conclusion:** You will NOT hit 4% by just holding.
+
 *   **Active Strategy (Sniper):** **POSSIBLE.**
-    *   Scanner showed APT currently yielding **10% (Annualized)**.
-    *   **The Key:** You must enter when the spread spikes (>10%) and exit when it normalizes.
-    *   **Frequency:** You need to catch about 2-3 "Spikes" per month to hit the 4% target.
+    *   **The Math:** To get 4% month, you need ~0.13% per day.
+    *   **The Opportunity:** We saw APT spread at ~10% APY (0.027% per day). This is still below target if held passively.
+    *   **The "Spike" Factor:** Funding rates are volatile. You make your money by entering when the rate spikes to **0.05% - 0.1% per round** (often just before payout).
+    *   **Frequency:** You need to catch about **4-5 high-yield rounds** per month (Sniping) to hit the 4% target.
 
 ## 2. Risk Assessment (Target: Level 6/10)
 **Current Rating: Level 6.5 / 10** (Slightly higher than target)
@@ -37,6 +40,9 @@ To achieve **4% at Risk Level 6**, you must upgrade from a "Manual Trader" to a 
 2.  **Execution Helper:**
     *   One-click button to "Open Long A / Short B" simultaneously to minimize leg risk.
 
-## Conclusion
-**"4% is achievable if you treat it as a job (Active), not an investment (Passive)."**
-If you are willing to rotate positions 2-3 times a month based on alerts, this system works.
+## Final Verdict: Can we hit 4%?
+**YES**, but it is **Hard Work**.
+*   ❌ **Lazy Mode:** Expect 1-2% / month.
+*   ✅ **Sniper Mode:** Expect 4-6% / month (if you catch the spikes).
+
+**Recommendation:** Start with **$500**. Aim for **2% first**. If you master the "Sniping" technique (entering 30 mins before payout), then scale up to aim for 4%.

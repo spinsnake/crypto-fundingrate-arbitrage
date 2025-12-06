@@ -58,3 +58,19 @@ With a spread of **0.04%**, it takes ~68 days to hit 4%.
 **To hit 4% in 30 days**, you need a spread of approx **0.09% - 0.10% per round** (or use 2x-3x leverage to amplify the yield).
 
 > **Note:** If you use **2x Leverage** ($1000 Collateral -> $2000 Position), the time is cut in half to **~34 Days**.
+
+---
+
+## 4. Advanced: The "Sniper" Strategy (Timing the Payout)
+**Question:** Do I need to hold for the full 8 hours?
+**Answer:** No. You only need to hold the position at the **exact moment of the snapshot** (e.g., 07:00, 15:00, 23:00).
+
+### The "Sniper" Approach
+*   **Strategy:** Enter 15-30 minutes before the funding time.
+*   **Pros:**
+    *   **Capital Efficiency:** Your money is locked for only ~1 hour instead of 8 hours.
+    *   **Rotation:** You can reuse the same capital for other pairs.
+*   **Cons (Risks):**
+    *   **Front-running:** Prices often move unfavorably just before funding as everyone tries to enter.
+    *   **Spread Compression:** The arbitrage gap often disappears 5-10 mins before the deadline.
+*   **Recommendation:** Start by entering **1 hour before**. Don't wait until the last minute.

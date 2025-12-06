@@ -5,6 +5,7 @@ from src.adapters.asterdex import AsterdexAdapter
 from src.adapters.hyperliquid import HyperliquidAdapter
 from src.strategies.funding_arb import FundingArbitrageStrategy
 from src.notification.telegram import TelegramNotifier
+from src.notification.discord import DiscordNotifier
 from src.config import POLL_INTERVAL, ENABLE_TRADING
 
 def main():
@@ -16,7 +17,8 @@ def main():
         HyperliquidAdapter()
     ]
     strategy = FundingArbitrageStrategy()
-    notifier = TelegramNotifier()
+    telegram_notifier = TelegramNotifier()
+    discord_notifier = DiscordNotifier()
     
     print(f"Loaded {len(exchanges)} exchanges: {[e.get_name() for e in exchanges]}")
     print(f"Mode: {'AUTO TRADING' if ENABLE_TRADING else 'ALERT ONLY'}")
@@ -45,15 +47,23 @@ def main():
             # Act
             if signals:
                 top_signal = signals[0]
+                
+                # Calculate countdown
+                now_ms = int(time.time() * 1000)
+                diff_ms = top_signal.next_funding_time - now_ms
+                minutes_left = max(0, int(diff_ms / 60000))
+                
                 msg = (
                     f"🚀 **Opportunity Found: {top_signal.symbol}**\n"
                     f"💰 Monthly Return: {top_signal.projected_monthly_return*100:.2f}%\n"
                     f"↔️ Spread (8h): {top_signal.spread*100:.4f}%\n"
+                    f"⏳ Next Payout: in {minutes_left} mins\n"
                     f"action: {top_signal.direction}\n"
                     f"(Long {top_signal.exchange_long} / Short {top_signal.exchange_short})"
                 )
                 print(msg)
-                notifier.send_alert(msg)
+                telegram_notifier.send_alert(msg)
+                discord_notifier.send_alert(msg)
                 
                 if ENABLE_TRADING:
                     print("[Execution] Auto-trading is enabled but not implemented yet.")

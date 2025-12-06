@@ -49,6 +49,9 @@ class FundingArbitrageStrategy(StrategyInterface):
                 exchange_long = "Hyperliquid"
                 exchange_short = "Asterdex"
                 
+            # Use the later funding time (usually Asterdex 8h) as the target
+            next_payout = max(aster.next_funding_time, hl.next_funding_time)
+
             signals.append(Signal(
                 symbol=symbol,
                 direction=direction,
@@ -56,7 +59,8 @@ class FundingArbitrageStrategy(StrategyInterface):
                 exchange_short=exchange_short,
                 spread=diff,
                 projected_monthly_return=monthly_return,
-                timestamp=int(time.time() * 1000)
+                timestamp=int(time.time() * 1000),
+                next_funding_time=next_payout
             ))
             
         # Sort by profitability

@@ -9,6 +9,7 @@ class FundingRate:
     source: str
     timestamp: int
     volume_24h: float = 0.0
+    next_funding_time: int = 0
 
 @dataclass
 class Signal:
@@ -19,6 +20,7 @@ class Signal:
     spread: float
     projected_monthly_return: float
     timestamp: int
+    next_funding_time: int = 0
 
 @dataclass
 class Order:

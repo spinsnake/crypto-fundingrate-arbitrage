@@ -14,3 +14,5 @@ POLL_INTERVAL = 60 # Check every 60 seconds
 # Notification Settings
 TELEGRAM_BOT_TOKEN = "" # User to fill
 TELEGRAM_CHAT_ID = ""   # User to fill
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1446766608264593519/gDLfrmOsdGmfQLRjihkQjkWk0ySS7jkKcaytdaxOa64wZBdAEnoFXUtEfCxSu_OQHM0Q"
+

@@ -44,7 +44,8 @@ class AsterdexAdapter(ExchangeInterface):
                     mark_price=float(item.get('markPrice', 0)),
                     source=self.get_name(),
                     timestamp=int(time.time() * 1000),
-                    volume_24h=vol_map.get(symbol, 0.0)
+                    volume_24h=vol_map.get(symbol, 0.0),
+                    next_funding_time=int(item.get('nextFundingTime', 0))
                 )
             return rates
         except Exception as e:
