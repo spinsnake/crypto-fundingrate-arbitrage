@@ -1,0 +1,8 @@
+.git
+.venv
+__pycache__
+*.pyc
+docs/
+backtest_results.json
+debug_hl_history.py
+poc_connectivity.py

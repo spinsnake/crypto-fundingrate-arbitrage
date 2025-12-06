@@ -42,7 +42,16 @@ Since we are doing Delta Neutral (Long + Short), you must split your capital **5
 2.  **Transfer:**
     *   Send $500 **USDC** -> Hyperliquid Account.
     *   Send $500 **USDT** -> Asterdex Futures Account.
-3.  **Result:** You are ready to open a $500 Long and $500 Short (1x Leverage) or more if using leverage.
+3.  **Result:** You are ready to trade.
+    *   **Option A (Safe / No Leverage):** Open $500 Long and $500 Short. (This uses 1x Leverage).
+    *   **Option B (Capital Efficient):** Open larger positions (e.g., $1,000) using 2x Leverage.
+
+## 4. Leverage Explained (User Question)
+**"Can I trade without leverage?"**
+*   **YES.** This is called **1x Leverage**.
+*   **Example:** You have $500 total ($250 on Asterdex, $250 on Hyperliquid).
+*   **Action:** You buy $250 worth of coin on Asterdex and sell $250 worth on Hyperliquid.
+*   **Risk:** Lowest possible. You only get liquidated if the price moves ~90-100% against you (which is nearly impossible with Delta Neutral hedging).
 
 ## 5. Rebalancing (The "Rotation" Cost)
 *   When you close a position, funds return to the respective exchange.

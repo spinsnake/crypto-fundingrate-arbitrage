@@ -19,9 +19,16 @@
     - [x] **Structure**: Setup `src/` (Core, Strategy, Notification, Execution) <!-- id: 15 -->
     - [x] **Core**: Implement Unified Exchange Interface (Adapter Pattern) <!-- id: 16 -->
     - [x] **Strategy**: Port scanning logic to `ArbitrageStrategy` class <!-- id: 17 -->
-    - [x] **Notification**: Implement Telegram/Line Alert system <!-- id: 20 -->
+    - [x] **Notification**: Implement Telegram/Line/Discord Alert system <!-- id: 20 -->
     - [x] **Execution**: Implement `OrderManager` (Start with Alert-only mode) <!-- id: 21 -->
     - [x] **Main**: Create `main_bot.py` loop <!-- id: 22 -->
+    - [x] **Safety**: Add Delisting & Volume Checks <!-- id: 23 -->
+    - [x] **Features**: Add Next Payout Countdown <!-- id: 24 -->
+
+- [x] **Phase 4: Documentation & Handover**
+    - [x] Create `setup_guide.md` (Wallets, Funds, Min Capital) <!-- id: 25 -->
+    - [x] Create `strategy_simulation.md` (Sniper Logic) <!-- id: 26 -->
+    - [x] Final Code Review <!-- id: 27 -->
 
 - [ ] **Verification**
     - [ ] Run full system in "Alert Mode" for 24h <!-- id: 6 -->

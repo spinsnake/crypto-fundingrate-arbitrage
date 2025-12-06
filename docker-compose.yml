@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  arb-bot:
+    build: .
+    container_name: crypto-arb-bot
+    restart: unless-stopped
+    environment:
+      - ENABLE_TRADING=False
+      - POLL_INTERVAL=60
+      # Add your keys here or use a .env file
+      # - TELEGRAM_BOT_TOKEN=your_token
+      # - TELEGRAM_CHAT_ID=your_chat_id
+      # - DISCORD_WEBHOOK_URL=your_webhook_url
+    volumes:
+      - ./src/config.py:/app/src/config.py # Optional: Mount config to edit without rebuilding
