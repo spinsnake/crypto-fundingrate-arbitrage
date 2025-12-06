@@ -27,7 +27,12 @@ def main():
     # 2. Main Loop
     while True:
         try:
-            print("\n[Scanning] Fetching market data...")
+            # Current BKK Time
+            now_utc = datetime.now(timezone.utc)
+            now_bkk = now_utc + timedelta(hours=7)
+            time_str = now_bkk.strftime("%H:%M:%S")
+            
+            print(f"\n[Scanning {time_str}] Fetching market data...")
             market_data = {} # { 'BTC': { 'Asterdex': Rate, 'Hyperliquid': Rate } }
             
             # Fetch from all exchanges
