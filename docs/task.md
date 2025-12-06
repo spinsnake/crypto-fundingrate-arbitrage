@@ -31,9 +31,10 @@
     - [x] Create `Dockerfile` & `docker-compose.yml` <!-- id: 28 -->
     - [x] Final Code Review & Fixes (Fee Calculation) <!-- id: 27 -->
 
-- [ ] **Phase 5: Verification (Current Step)**
-    - [ ] **Dry Run:** Run in "Alert Mode" for 24-48h. (Found HEMI @ 4.03%) <!-- id: 29 -->
-    - [ ] **Funding:** Prepare wallets ($50 test or $500 real). <!-- id: 30 -->
+- [x] **Phase 5: Verification (Current Step)**
+    - [x] **Dry Run:** Run in "Alert Mode" for 24-48h. (Found HEMI @ 4.03%) <!-- id: 29 -->
+    - [x] **Funding:** Prepare wallets ($50 test or $500 real). <!-- id: 30 -->
+    - [x] **Live Test:** Manual execution of WLFI trade (Net Funding Positive).
 
 - [ ] **Phase 6: Execution Implementation (Next Step)**
     - [ ] Implement `place_order` in `AsterdexAdapter`. <!-- id: 31 -->

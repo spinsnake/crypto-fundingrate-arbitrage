@@ -24,6 +24,7 @@ class Signal:
     next_funding_time: int
     is_watchlist: bool = False
     warning: str = ""
+    break_even_rounds: int = 0
 
 @dataclass
 class Order:

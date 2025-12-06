@@ -71,6 +71,13 @@ class FundingArbitrageStrategy(StrategyInterface):
             # Use the later funding time (usually Asterdex 8h) as the target
             next_payout = max(aster.next_funding_time, hl.next_funding_time)
 
+            # Calculate Break-Even Rounds (Fee / Spread)
+            # Avoid division by zero
+            if diff > 0:
+                break_even_rounds = int((ESTIMATED_FEE_PER_ROTATION / diff) + 0.99) # Ceiling division
+            else:
+                break_even_rounds = 999
+
             signals.append(Signal(
                 symbol=symbol,
                 direction=direction,
@@ -81,7 +88,8 @@ class FundingArbitrageStrategy(StrategyInterface):
                 timestamp=int(time.time() * 1000),
                 next_funding_time=next_payout,
                 is_watchlist=is_watched,
-                warning=warning_msg
+                warning=warning_msg,
+                break_even_rounds=break_even_rounds
             ))
             
         # Sort by profitability

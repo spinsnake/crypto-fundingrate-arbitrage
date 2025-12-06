@@ -75,10 +75,14 @@ def main():
                     icon = "👀" if top_signal.is_watchlist else "🚀"
                     warning_text = f"\n{top_signal.warning}" if top_signal.warning else ""
                     
+                    # Calculate Hold Time
+                    hold_hours = top_signal.break_even_rounds * 8
+                    
                     msg = (
                         f"{icon} **Opportunity Found: {top_signal.symbol}**{warning_text}\n"
                         f"💰 Monthly Return: {top_signal.projected_monthly_return*100:.2f}%\n"
                         f"↔️ Spread (8h): {top_signal.spread*100:.4f}%\n"
+                        f"🛡️ Min Hold: {top_signal.break_even_rounds} Rounds (~{hold_hours} Hours) to Break Even\n"
                         f"⏳ Next Payout: in {minutes_left} mins ({bkk_str} BKK)\n"
                         f"action: {top_signal.direction}\n"
                         f"(Long {top_signal.exchange_long} / Short {top_signal.exchange_short})"
