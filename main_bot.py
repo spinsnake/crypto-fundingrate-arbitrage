@@ -47,33 +47,44 @@ def main():
             
             # Act
             if signals:
-                top_signal = signals[0]
+                # Prioritize Watchlist Signals
+                watchlist_signals = [s for s in signals if s.is_watchlist]
+                other_signals = [s for s in signals if not s.is_watchlist]
                 
-                # Calculate countdown
-                now_ms = int(time.time() * 1000)
-                diff_ms = top_signal.next_funding_time - now_ms
-                minutes_left = max(0, int(diff_ms / 60000))
+                # Combine: Watchlist first, then others sorted by profit
+                final_signals = watchlist_signals + other_signals
                 
-                # Calculate BKK time (UTC+7)
-                payout_dt_utc = datetime.fromtimestamp(top_signal.next_funding_time / 1000, tz=timezone.utc)
-                bkk_time = payout_dt_utc + timedelta(hours=7)
-                bkk_str = bkk_time.strftime("%H:%M")
-                
-                msg = (
-                    f"🚀 **Opportunity Found: {top_signal.symbol}**\n"
-                    f"💰 Monthly Return: {top_signal.projected_monthly_return*100:.2f}%\n"
-                    f"↔️ Spread (8h): {top_signal.spread*100:.4f}%\n"
-                    f"⏳ Next Payout: in {minutes_left} mins ({bkk_str} BKK)\n"
-                    f"action: {top_signal.direction}\n"
-                    f"(Long {top_signal.exchange_long} / Short {top_signal.exchange_short})"
-                )
-                print(msg)
-                telegram_notifier.send_alert(msg)
-                discord_notifier.send_alert(msg)
-                
-                if ENABLE_TRADING:
-                    print("[Execution] Auto-trading is enabled but not implemented yet.")
-                    # execution_manager.execute(top_signal)
+                if final_signals:
+                    top_signal = final_signals[0]
+                    
+                    # Calculate countdown
+                    now_ms = int(time.time() * 1000)
+                    diff_ms = top_signal.next_funding_time - now_ms
+                    minutes_left = max(0, int(diff_ms / 60000))
+                    
+                    # Calculate BKK time (UTC+7)
+                    payout_dt_utc = datetime.fromtimestamp(top_signal.next_funding_time / 1000, tz=timezone.utc)
+                    bkk_time = payout_dt_utc + timedelta(hours=7)
+                    bkk_str = bkk_time.strftime("%H:%M")
+                    
+                    icon = "👀" if top_signal.is_watchlist else "🚀"
+                    warning_text = f"\n{top_signal.warning}" if top_signal.warning else ""
+                    
+                    msg = (
+                        f"{icon} **Opportunity Found: {top_signal.symbol}**{warning_text}\n"
+                        f"💰 Monthly Return: {top_signal.projected_monthly_return*100:.2f}%\n"
+                        f"↔️ Spread (8h): {top_signal.spread*100:.4f}%\n"
+                        f"⏳ Next Payout: in {minutes_left} mins ({bkk_str} BKK)\n"
+                        f"action: {top_signal.direction}\n"
+                        f"(Long {top_signal.exchange_long} / Short {top_signal.exchange_short})"
+                    )
+                    print(msg)
+                    telegram_notifier.send_alert(msg)
+                    discord_notifier.send_alert(msg)
+                    
+                    if ENABLE_TRADING:
+                        print("[Execution] Auto-trading is enabled but not implemented yet.")
+                        # execution_manager.execute(top_signal)
             
             print(f"[Sleep] Waiting {POLL_INTERVAL}s...")
             time.sleep(POLL_INTERVAL)
