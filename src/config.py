@@ -5,8 +5,12 @@ HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
 # Strategy Settings
 MIN_MONTHLY_RETURN = 0.04  # 4%
 MIN_SPREAD_PER_ROUND = 0.0005 # 0.05% per 8h
-MIN_VOLUME_USDT = 1000000 # 1M Daily Volume
+MIN_VOLUME_USDT = 500000 # 1M Daily Volume
 ESTIMATED_FEE_PER_ROTATION = 0.002 # 0.2% (Taker 0.05% x 4 legs)
+
+# Filter Settings
+ENABLE_VOLUME_FILTER = True
+ENABLE_DELIST_FILTER = True
 
 # Execution Settings
 ENABLE_TRADING = False # SAFETY: Start with False (Alert Mode)

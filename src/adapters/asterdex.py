@@ -45,7 +45,8 @@ class AsterdexAdapter(ExchangeInterface):
                     source=self.get_name(),
                     timestamp=int(time.time() * 1000),
                     volume_24h=vol_map.get(symbol, 0.0),
-                    next_funding_time=int(item.get('nextFundingTime', 0))
+                    next_funding_time=int(item.get('nextFundingTime', 0)),
+                    is_active=self.is_symbol_active(base_symbol)
                 )
             return rates
         except Exception as e:

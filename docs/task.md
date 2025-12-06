@@ -32,7 +32,7 @@
     - [x] Final Code Review & Fixes (Fee Calculation) <!-- id: 27 -->
 
 - [ ] **Phase 5: Verification (Current Step)**
-    - [ ] **Dry Run:** Run in "Alert Mode" for 24-48h to verify signals. <!-- id: 29 -->
+    - [ ] **Dry Run:** Run in "Alert Mode" for 24-48h. (Found HEMI @ 4.03%) <!-- id: 29 -->
     - [ ] **Funding:** Prepare wallets ($50 test or $500 real). <!-- id: 30 -->
 
 - [ ] **Phase 6: Execution Implementation (Next Step)**

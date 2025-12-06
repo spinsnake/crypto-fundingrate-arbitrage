@@ -1,5 +1,19 @@
 # Setup Guide: Wallets & Funding
 
+## 0. Fiat On-Ramp (Bank -> Crypto)
+**Step 1: Convert THB to USDT**
+You cannot transfer directly from a Thai Bank to Hyperliquid/Asterdex. You need a "Bridge".
+*   **Option A: Thai Exchange (Bitkub / Binance TH / Orbix)**
+    1.  Deposit THB via QR Code.
+    2.  Buy **USDT**.
+    3.  Withdraw USDT to your **Metamask Wallet** (Select Network: **Arbitrum One**).
+*   **Option B: P2P (Binance Global / OKX)**
+    1.  Go to P2P Trading.
+    2.  Buy USDT from a merchant using Bank Transfer.
+    3.  Withdraw USDT to your **Metamask Wallet** (Select Network: **Arbitrum One**).
+
+**⚠️ Important:** Always select **Arbitrum One** network when withdrawing. If you choose Ethereum (ERC20), fees will be very expensive ($10+). Arbitrum fees are cheap ($0.1 - $1).
+
 ## 1. Wallet Setup (One Key for All)
 You only need **1 EVM Wallet** (MetaMask, Rabby, or Trust Wallet).
 *   **Network:** Arbitrum One (Recommended for low fees & speed).

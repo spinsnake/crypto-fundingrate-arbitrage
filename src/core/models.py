@@ -10,6 +10,7 @@ class FundingRate:
     timestamp: int
     volume_24h: float = 0.0
     next_funding_time: int = 0
+    is_active: bool = True
 
 @dataclass
 class Signal:

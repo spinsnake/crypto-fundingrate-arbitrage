@@ -40,7 +40,8 @@ class HyperliquidAdapter(ExchangeInterface):
                     source=self.get_name(),
                     timestamp=int(time.time() * 1000),
                     volume_24h=float(ctx.get('dayNtlVlm', 0)),
-                    next_funding_time=next_hour
+                    next_funding_time=next_hour,
+                    is_active=True
                 )
             return rates
         except Exception as e:
