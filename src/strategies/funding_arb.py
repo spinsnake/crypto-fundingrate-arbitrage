@@ -2,7 +2,7 @@ from typing import List, Dict
 import time
 from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
-from ..config import MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_USDT
+from ..config import MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_USDT, ESTIMATED_FEE_PER_ROTATION
 
 class FundingArbitrageStrategy(StrategyInterface):
     def analyze(self, market_data: Dict[str, Dict[str, FundingRate]]) -> List[Signal]:
@@ -31,10 +31,13 @@ class FundingArbitrageStrategy(StrategyInterface):
             
             # Project Returns
             daily_return = diff * 3
-            monthly_return = daily_return * 30
+            monthly_gross = daily_return * 30
+            
+            # Net Return (Subtract Entry+Exit Fees ~0.2%)
+            monthly_net = monthly_gross - ESTIMATED_FEE_PER_ROTATION
             
             # Filter by Threshold
-            if monthly_return < MIN_MONTHLY_RETURN:
+            if monthly_net < MIN_MONTHLY_RETURN:
                 continue
                 
             # Determine Direction
@@ -58,7 +61,7 @@ class FundingArbitrageStrategy(StrategyInterface):
                 exchange_long=exchange_long,
                 exchange_short=exchange_short,
                 spread=diff,
-                projected_monthly_return=monthly_return,
+                projected_monthly_return=monthly_net,
                 timestamp=int(time.time() * 1000),
                 next_funding_time=next_payout
             ))

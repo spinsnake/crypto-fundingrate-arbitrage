@@ -25,10 +25,17 @@
     - [x] **Safety**: Add Delisting & Volume Checks <!-- id: 23 -->
     - [x] **Features**: Add Next Payout Countdown <!-- id: 24 -->
 
-- [x] **Phase 4: Documentation & Handover**
+- [x] **Phase 4: Documentation & Deployment**
     - [x] Create `setup_guide.md` (Wallets, Funds, Min Capital) <!-- id: 25 -->
     - [x] Create `strategy_simulation.md` (Sniper Logic) <!-- id: 26 -->
-    - [x] Final Code Review <!-- id: 27 -->
+    - [x] Create `Dockerfile` & `docker-compose.yml` <!-- id: 28 -->
+    - [x] Final Code Review & Fixes (Fee Calculation) <!-- id: 27 -->
 
-- [ ] **Verification**
-    - [ ] Run full system in "Alert Mode" for 24h <!-- id: 6 -->
+- [ ] **Phase 5: Verification (Current Step)**
+    - [ ] **Dry Run:** Run in "Alert Mode" for 24-48h to verify signals. <!-- id: 29 -->
+    - [ ] **Funding:** Prepare wallets ($50 test or $500 real). <!-- id: 30 -->
+
+- [ ] **Phase 6: Execution Implementation (Next Step)**
+    - [ ] Implement `place_order` in `AsterdexAdapter`. <!-- id: 31 -->
+    - [ ] Implement `place_order` in `HyperliquidAdapter`. <!-- id: 32 -->
+    - [ ] Create `OrderManager` for one-click execution. <!-- id: 33 -->

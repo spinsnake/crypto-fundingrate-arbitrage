@@ -37,15 +37,6 @@ Since we are doing Delta Neutral (Long + Short), you must split your capital **5
     *   **Net Profit:** **+$0.20** (Green)
 *   **Conclusion:** Start with **$500** if you want to see actual green numbers.
 
-## 4. Example Allocation ($1,000 Total)
-1.  **Swap:** Convert $500 to USDC and $500 to USDT.
-2.  **Transfer:**
-    *   Send $500 **USDC** -> Hyperliquid Account.
-    *   Send $500 **USDT** -> Asterdex Futures Account.
-3.  **Result:** You are ready to trade.
-    *   **Option A (Safe / No Leverage):** Open $500 Long and $500 Short. (This uses 1x Leverage).
-    *   **Option B (Capital Efficient):** Open larger positions (e.g., $1,000) using 2x Leverage.
-
 ## 4. Leverage Explained (User Question)
 **"Can I trade without leverage?"**
 *   **YES.** This is called **1x Leverage**.
@@ -60,3 +51,14 @@ Since we are doing Delta Neutral (Long + Short), you must split your capital **5
     2.  Swap (USDC <-> USDT) on Uniswap/1inch.
     3.  Deposit to the other exchange.
 *   *Tip:* Keep a small "Buffer" in your wallet to avoid waiting for withdrawals during urgent rebalancing.
+
+## 6. Daily Schedule (When to Work)
+You don't need to watch 24/7. Just focus on these **3 Critical Times** (UTC+7 / Thailand Time):
+
+1.  **☀️ 07:00 AM** (Morning) -> Start checking at **06:30 AM**
+2.  **🕑 15:00 PM** (Afternoon) -> Start checking at **14:30 PM**
+3.  **🌙 23:00 PM** (Night) -> Start checking at **22:30 PM**
+
+**Why?**
+*   Asterdex pays Funding Fees exactly at these times.
+*   **Strategy:** Enter 30 mins before -> Get Paid -> Exit (Sniper Mode).
