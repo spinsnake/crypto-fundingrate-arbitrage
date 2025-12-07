@@ -1,8 +1,10 @@
 import os
 import requests
 import time
+from decimal import Decimal, ROUND_DOWN
 from typing import Dict, Any, List
 from dotenv import load_dotenv
+from eth_account import Account
 from ..core.interfaces import ExchangeInterface
 from ..core.models import FundingRate, Order
 from ..config import HYPERLIQUID_API_URL, HYPERLIQUID_TAKER_FEE, DEFAULT_LEVERAGE
@@ -25,11 +27,15 @@ class HyperliquidAdapter(ExchangeInterface):
         self.wallet_address = os.getenv("hyperliquid_wallet_address", "")
         self.base_url = HYPERLIQUID_API_URL
         self.leverage = DEFAULT_LEVERAGE
+        self._sz_decimals: Dict[str, int] = {}
+        self._px_decimals: Dict[str, int] = {}
 
         if HlExchange and hl_constants and self.private_key:
             try:
-                self._exchange = HlExchange(self.private_key, hl_constants.MAINNET_API_URL, account_address=self.wallet_address)
+                wallet_obj = Account.from_key(self.private_key)
+                self._exchange = HlExchange(wallet_obj, hl_constants.MAINNET_API_URL, account_address=self.wallet_address)
                 self._info = HlInfo(hl_constants.MAINNET_API_URL)
+                self._load_meta()
             except Exception as e:
                 print(f"[Hyperliquid] SDK init failed, using mock: {e}")
                 self._exchange = None
@@ -95,19 +101,21 @@ class HyperliquidAdapter(ExchangeInterface):
         is_buy = order.side.upper() == "BUY"
         tif = {"limit": {"tif": "Gtc"}} if order.type.upper() == "LIMIT" else {"market": {}}
         leverage = order.leverage or self.leverage
+        qty = self._quantize_size(order.symbol, order.quantity)
+        px = self._quantize_price(order.symbol, order.price) if order.price else None
 
         try:
             if hasattr(self._exchange, "update_leverage"):
                 try:
-                    self._exchange.update_leverage(leverage)
+                    self._exchange.update_leverage(leverage, order.symbol, True)
                 except Exception as le:
                     print(f"[Hyperliquid] set leverage failed (ignored): {le}")
 
             resp = self._exchange.order(
                 order.symbol,
                 is_buy,
-                order.quantity,
-                order.price if order.type.upper() == "LIMIT" else None,
+                qty,
+                px if order.type.upper() == "LIMIT" else None,
                 tif,
                 reduce_only=False,
             )
@@ -124,10 +132,15 @@ class HyperliquidAdapter(ExchangeInterface):
             state = self._info.user_state(self.wallet_address)
             positions = []
             for pos in state.get("assetPositions", []):
-                coin = pos.get("coin")
-                p = pos.get("position", {})
-                sz = float(p.get("szi", 0))
-                if sz == 0:
+                p = pos.get("position", {}) or {}
+                # Coin field can live under position or top-level depending on API version
+                coin = p.get("coin") or pos.get("coin") or pos.get("asset")
+                szi = p.get("szi", 0) or pos.get("szi", 0)
+                try:
+                    sz = float(szi)
+                except Exception:
+                    sz = 0.0
+                if not coin or sz == 0:
                     continue
                 side = "LONG" if sz > 0 else "SHORT"
                 positions.append({"symbol": coin, "side": side, "quantity": abs(sz)})
@@ -135,6 +148,35 @@ class HyperliquidAdapter(ExchangeInterface):
         except Exception as e:
             print(f"[Hyperliquid] get_open_positions failed: {e}")
             return []
+
+    def _load_meta(self):
+        try:
+            meta = self._info.meta() if self._info else None
+            if not meta:
+                return
+            universe = meta.get("universe", [])
+            sz_dec = {}
+            px_dec = {}
+            for asset in universe:
+                name = asset.get("name")
+                if not name:
+                    continue
+                sz_dec[name] = int(asset.get("szDecimals", 0))
+                px_dec[name] = int(asset.get("pxDecimals", 0)) if "pxDecimals" in asset else 4
+            self._sz_decimals = sz_dec
+            self._px_decimals = px_dec
+        except Exception as e:
+            print(f"[Hyperliquid] load meta failed: {e}")
+
+    def _quantize_size(self, symbol: str, qty: float) -> float:
+        dec = self._sz_decimals.get(symbol, 4)
+        q = Decimal(str(qty)).quantize(Decimal(10) ** -dec, rounding=ROUND_DOWN)
+        return float(q)
+
+    def _quantize_price(self, symbol: str, price: float) -> float:
+        dec = self._px_decimals.get(symbol, 4)
+        p = Decimal(str(price)).quantize(Decimal(10) ** -dec, rounding=ROUND_DOWN)
+        return float(p)
 
     def get_top_of_book(self, symbol: str) -> Dict[str, float]:
         """
@@ -181,3 +223,14 @@ class HyperliquidAdapter(ExchangeInterface):
         except Exception as e:
             print(f"[Hyperliquid] Connection test failed: {e}")
             return False
+
+    def get_account_info(self) -> Dict[str, Any]:
+        """
+        Return user_state if SDK/info is available, else empty dict.
+        """
+        if self._info and self.wallet_address:
+            try:
+                return self._info.user_state(self.wallet_address)
+            except Exception as e:
+                print(f"[Hyperliquid] get_account_info failed: {e}")
+        return {}

@@ -34,22 +34,42 @@ def main():
         if qty <= 0 or not symbol:
             continue
 
-        if pos["exchange"] == "Asterdex" and side == "LONG":
+        if pos["exchange"] == "Asterdex":
+            # Close both LONG and SHORT
             book = aster.get_top_of_book(symbol)
-            price = execu._price_with_slippage(book.get("bid", 0.0), "SELL")
-            res = aster.place_order(
-                Order(symbol=symbol, side="SELL", quantity=qty, price=price, type="LIMIT")
-            )
-            print(f"[Close] Asterdex LONG {symbol} qty={qty} price={price} -> {res}")
-        elif pos["exchange"] == "Hyperliquid" and side == "SHORT":
+            if side == "LONG":
+                price = execu._price_with_slippage(book.get("bid", 0.0), "SELL")
+                res = aster.place_order(
+                    Order(symbol=symbol, side="SELL", quantity=qty, price=price, type="LIMIT")
+                )
+                print(f"[Close] Asterdex LONG {symbol} qty={qty} price={price} -> {res}")
+            elif side == "SHORT":
+                price = execu._price_with_slippage(book.get("ask", 0.0), "BUY")
+                res = aster.place_order(
+                    Order(symbol=symbol, side="BUY", quantity=qty, price=price, type="LIMIT")
+                )
+                print(f"[Close] Asterdex SHORT {symbol} qty={qty} price={price} -> {res}")
+            else:
+                print(f"[Close] Asterdex unsupported side: {pos}")
+
+        elif pos["exchange"] == "Hyperliquid":
             book = hyper.get_top_of_book(symbol)
-            price = execu._price_with_slippage(book.get("ask", 0.0), "BUY")
-            res = hyper.place_order(
-                Order(symbol=symbol, side="BUY", quantity=qty, price=price, type="LIMIT")
-            )
-            print(f"[Close] Hyperliquid SHORT {symbol} qty={qty} price={price} -> {res}")
+            if side == "LONG":
+                price = execu._price_with_slippage(book.get("bid", 0.0), "SELL")
+                res = hyper.place_order(
+                    Order(symbol=symbol, side="SELL", quantity=qty, price=price, type="LIMIT")
+                )
+                print(f"[Close] Hyperliquid LONG {symbol} qty={qty} price={price} -> {res}")
+            elif side == "SHORT":
+                price = execu._price_with_slippage(book.get("ask", 0.0), "BUY")
+                res = hyper.place_order(
+                    Order(symbol=symbol, side="BUY", quantity=qty, price=price, type="LIMIT")
+                )
+                print(f"[Close] Hyperliquid SHORT {symbol} qty={qty} price={price} -> {res}")
+            else:
+                print(f"[Close] Hyperliquid unsupported side: {pos}")
         else:
-            print(f"[Close] Unsupported position: {pos}")
+            print(f"[Close] Unsupported exchange: {pos}")
 
 
 if __name__ == "__main__":

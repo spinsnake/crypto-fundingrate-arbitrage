@@ -1,7 +1,7 @@
 import os
 import requests
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from ..core.interfaces import ExchangeInterface
 from ..core.models import FundingRate, Order
@@ -17,6 +17,7 @@ class AsterdexAdapter(ExchangeInterface):
         self.api_key = api_key or os.getenv("asterdex_api_key", "")
         self.api_secret = api_secret or os.getenv("asterdex_api_secret", "")
         self.base_url = ASTERDEX_API_URL
+        self._filters: Dict[str, Dict[str, float]] = {}
 
     def get_name(self) -> str:
         return "Asterdex"
@@ -73,17 +74,21 @@ class AsterdexAdapter(ExchangeInterface):
             print(f"[Asterdex] Mock Order Placed (no API key/secret): {order}")
             return {"status": "mock_success", "order_id": "mock_123"}
 
+        symbol_pair = f"{order.symbol}USDT"
+        qty, px = self._round_qty_px(symbol_pair, order.quantity, order.price)
+
         endpoint = "/fapi/v1/order"
         timestamp = int(time.time() * 1000)
         params = {
-            "symbol": f"{order.symbol}USDT",
+            "symbol": symbol_pair,
             "side": order.side,
             "type": order.type,
-            "quantity": order.quantity,
+            "quantity": qty,
             "timestamp": timestamp,
+            "recvWindow": 5000,
         }
         if order.type.upper() == "LIMIT":
-            params["price"] = order.price
+            params["price"] = px
             params["timeInForce"] = "GTC"
         query = urllib.parse.urlencode(params)
         signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
@@ -108,7 +113,7 @@ class AsterdexAdapter(ExchangeInterface):
             return []
         endpoint = "/fapi/v2/positionRisk"
         timestamp = int(time.time() * 1000)
-        params = {"timestamp": timestamp}
+        params = {"timestamp": timestamp, "recvWindow": 5000}
         query = urllib.parse.urlencode(params)
         signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
         params["signature"] = signature
@@ -132,6 +137,45 @@ class AsterdexAdapter(ExchangeInterface):
         except Exception as e:
             print(f"[Asterdex] get_open_positions failed: {e}")
             return []
+
+    def _round_qty_px(self, symbol_pair: str, qty: float, price: Optional[float]) -> tuple:
+        """Round quantity/price using exchangeInfo filters when available."""
+        if symbol_pair not in self._filters:
+            self._load_filters()
+        f = self._filters.get(symbol_pair, {})
+        step = f.get("stepSize", 0)
+        tick = f.get("tickSize", 0)
+
+        def _round(value: float, step_size: float) -> float:
+            if step_size <= 0:
+                return value
+            return max(step_size, (int(value / step_size)) * step_size)
+
+        qty_r = _round(qty, step)
+        px_r = _round(price, tick) if price is not None else None
+        return qty_r, px_r
+
+    def _load_filters(self):
+        try:
+            resp = requests.get(f"{self.base_url}/fapi/v1/exchangeInfo", timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            for sym in data.get("symbols", []):
+                spair = sym.get("symbol")
+                if not spair:
+                    continue
+                filters = sym.get("filters", [])
+                step = 0
+                tick = 0
+                for flt in filters:
+                    ftype = flt.get("filterType")
+                    if ftype == "LOT_SIZE":
+                        step = float(flt.get("stepSize", 0))
+                    if ftype == "PRICE_FILTER":
+                        tick = float(flt.get("tickSize", 0))
+                self._filters[spair] = {"stepSize": step, "tickSize": tick}
+        except Exception as e:
+            print(f"[Asterdex] load filters failed: {e}")
 
     def get_top_of_book(self, symbol: str) -> Dict[str, float]:
         """
