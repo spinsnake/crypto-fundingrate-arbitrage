@@ -11,6 +11,7 @@ class FundingRate:
     volume_24h: float = 0.0
     next_funding_time: int = 0
     is_active: bool = True
+    taker_fee: float = 0.0
 
 @dataclass
 class Signal:

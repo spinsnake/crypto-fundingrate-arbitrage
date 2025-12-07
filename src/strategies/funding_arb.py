@@ -40,13 +40,18 @@ class FundingArbitrageStrategy(StrategyInterface):
                 
             # Calculate Spread
             diff = abs(aster.rate - hl.rate)
+
+            # Dynamic fee per rotation (open+close both legs); fallback to config constant
+            fee_per_rotation = ESTIMATED_FEE_PER_ROTATION
+            if aster.taker_fee or hl.taker_fee:
+                fee_per_rotation = (aster.taker_fee + hl.taker_fee) * 2
             
             # Project Returns
             daily_return = diff * 3
             monthly_gross = daily_return * 30
             
             # Net Return (Subtract Entry+Exit Fees ~0.2%)
-            monthly_net = monthly_gross - ESTIMATED_FEE_PER_ROTATION
+            monthly_net = monthly_gross - fee_per_rotation
             
             # Filter by Threshold
             if monthly_net < MIN_MONTHLY_RETURN and not is_watched:
@@ -74,7 +79,7 @@ class FundingArbitrageStrategy(StrategyInterface):
             # Calculate Break-Even Rounds (Fee / Spread)
             # Avoid division by zero
             if diff > 0:
-                break_even_rounds = int((ESTIMATED_FEE_PER_ROTATION / diff) + 0.99) # Ceiling division
+                break_even_rounds = int((fee_per_rotation / diff) + 0.99) # Ceiling division
             else:
                 break_even_rounds = 999
 

@@ -3,7 +3,7 @@ import time
 from typing import Dict, Any
 from ..core.interfaces import ExchangeInterface
 from ..core.models import FundingRate, Order
-from ..config import HYPERLIQUID_API_URL
+from ..config import HYPERLIQUID_API_URL, HYPERLIQUID_TAKER_FEE
 
 class HyperliquidAdapter(ExchangeInterface):
     def __init__(self, private_key: str = ""):
@@ -41,7 +41,8 @@ class HyperliquidAdapter(ExchangeInterface):
                     timestamp=int(time.time() * 1000),
                     volume_24h=float(ctx.get('dayNtlVlm', 0)),
                     next_funding_time=next_hour,
-                    is_active=True
+                    is_active=True,
+                    taker_fee=HYPERLIQUID_TAKER_FEE
                 )
             return rates
         except Exception as e:

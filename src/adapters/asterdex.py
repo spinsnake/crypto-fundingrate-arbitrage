@@ -3,7 +3,7 @@ import time
 from typing import Dict, Any
 from ..core.interfaces import ExchangeInterface
 from ..core.models import FundingRate, Order
-from ..config import ASTERDEX_API_URL
+from ..config import ASTERDEX_API_URL, ASTERDEX_TAKER_FEE
 
 class AsterdexAdapter(ExchangeInterface):
     def __init__(self, api_key: str = "", api_secret: str = ""):
@@ -46,7 +46,8 @@ class AsterdexAdapter(ExchangeInterface):
                     timestamp=int(time.time() * 1000),
                     volume_24h=vol_map.get(symbol, 0.0),
                     next_funding_time=int(item.get('nextFundingTime', 0)),
-                    is_active=self.is_symbol_active(base_symbol)
+                    is_active=self.is_symbol_active(base_symbol),
+                    taker_fee=ASTERDEX_TAKER_FEE
                 )
             return rates
         except Exception as e:
