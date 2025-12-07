@@ -9,6 +9,7 @@ from ..config import ASTERDEX_API_URL, ASTERDEX_TAKER_FEE
 import hmac
 import hashlib
 import urllib.parse
+from collections import OrderedDict
 
 load_dotenv()
 
@@ -90,17 +91,23 @@ class AsterdexAdapter(ExchangeInterface):
         if order.type.upper() == "LIMIT":
             params["price"] = px
             params["timeInForce"] = "GTC"
-        query = urllib.parse.urlencode(params)
+        # Preserve order for signing
+        query = urllib.parse.urlencode(list(OrderedDict(params).items()))
         signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-        params["signature"] = signature
+        signed_params = dict(params)
+        signed_params["signature"] = signature
 
-        headers = {"X-MBX-APIKEY": self.api_key}
+        headers = {"X-MBX-APIKEY": self.api_key, "Content-Type": "application/x-www-form-urlencoded"}
         try:
-            resp = requests.post(f"{self.base_url}{endpoint}", params=params, headers=headers, timeout=10)
+            resp = requests.post(f"{self.base_url}{endpoint}", data=signed_params, headers=headers, timeout=10)
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
-            print(f"[Asterdex] Order failed, falling back to mock: {e}")
+            try:
+                err_body = resp.text  # type: ignore
+            except Exception:
+                err_body = ""
+            print(f"[Asterdex] Order failed, falling back to mock: {e} {err_body}")
             print(f"[Asterdex] Mock Order Placed: {order}")
             return {"status": "mock_success", "order_id": "mock_asterdex_fallback"}
 

@@ -13,7 +13,7 @@ from src.adapters.hyperliquid import HyperliquidAdapter  # noqa: E402
 from src.core.execution_manager import ExecutionManager  # noqa: E402
 
 SYMBOL = "MOODENG"
-NOTIONAL = 520  # per leg in quote (USDT/USDC)
+NOTIONAL = 15  # per leg in quote (USDT/USDC)
 
 def main():
     aster = AsterdexAdapter()
