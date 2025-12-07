@@ -27,6 +27,10 @@ class ExchangeInterface(ABC):
         """Check if the symbol is currently trading and not delisted"""
         pass
 
+    def get_top_of_book(self, symbol: str) -> Dict[str, Any]:
+        """Get best bid/ask for a symbol. Returns {'bid': float, 'ask': float}"""
+        pass
+
 class StrategyInterface(ABC):
     @abstractmethod
     def analyze(self, market_data: Dict[str, Dict[str, FundingRate]]) -> List[Signal]:

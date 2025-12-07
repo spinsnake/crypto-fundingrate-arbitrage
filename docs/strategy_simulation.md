@@ -74,3 +74,20 @@ With a spread of **0.04%**, it takes ~68 days to hit 4%.
     *   **Front-running:** Prices often move unfavorably just before funding as everyone tries to enter.
     *   **Spread Compression:** The arbitrage gap often disappears 5-10 mins before the deadline.
 *   **Recommendation:** Start by entering **1 hour before**. Don't wait until the last minute.
+
+---
+
+## 5. CLI Helpers (Opening/Closing the Spread)
+We added simple scripts to open/close the spread with limit + slippage buffer (using `ExecutionManager`).
+
+- Open spread (Long Asterdex / Short Hyperliquid):  
+  `python open_order.py HEMI 500`  
+  *Parameters*: `symbol` (base, e.g., HEMI), `notional` per leg in quote (USDT/USDC), e.g., 500.
+
+- Close spread:  
+  `python close_order.py HEMI 32695 32847`  
+  *Parameters*: `symbol`, `qty_long` (Asterdex long leg qty, base), `qty_short` (Hyperliquid short leg qty, base).
+
+Notes:
+- Scripts use limit orders with slippage buffer from `SLIPPAGE_BPS` in `src/config.py`.
+- Adapters currently have mock `place_order`; wire to real API before trading live.

@@ -1,14 +1,18 @@
+import os
 import requests
 import time
 from typing import Dict, Any
+from dotenv import load_dotenv
 from ..core.interfaces import ExchangeInterface
 from ..core.models import FundingRate, Order
 from ..config import ASTERDEX_API_URL, ASTERDEX_TAKER_FEE
 
+load_dotenv()
+
 class AsterdexAdapter(ExchangeInterface):
     def __init__(self, api_key: str = "", api_secret: str = ""):
-        self.api_key = api_key
-        self.api_secret = api_secret
+        self.api_key = api_key or os.getenv("asterdex_api_key", "")
+        self.api_secret = api_secret or os.getenv("asterdex_api_secret", "")
         self.base_url = ASTERDEX_API_URL
 
     def get_name(self) -> str:
@@ -63,6 +67,35 @@ class AsterdexAdapter(ExchangeInterface):
         print(f"[Asterdex] Mock Order Placed: {order}")
         return {"status": "mock_success", "order_id": "mock_123"}
 
+    def get_top_of_book(self, symbol: str) -> Dict[str, float]:
+        """
+        Return best bid/ask for symbol (USDT pairs). Uses mark price as fallback.
+        """
+        pair = f"{symbol}USDT"
+        try:
+            depth = requests.get(f"{self.base_url}/fapi/v1/depth", params={"symbol": pair, "limit": 5}, timeout=5)
+            depth.raise_for_status()
+            data = depth.json()
+            bid = float(data["bids"][0][0]) if data.get("bids") else 0.0
+            ask = float(data["asks"][0][0]) if data.get("asks") else 0.0
+            # Fallback to mark price if empty book
+            if bid == 0 or ask == 0:
+                mp = self._get_mark_price(pair)
+                return {"bid": mp, "ask": mp}
+            return {"bid": bid, "ask": ask}
+        except Exception:
+            mp = self._get_mark_price(pair)
+            return {"bid": mp, "ask": mp}
+
+    def _get_mark_price(self, pair: str) -> float:
+        try:
+            r = requests.get(f"{self.base_url}/fapi/v1/premiumIndex", params={"symbol": pair}, timeout=5)
+            r.raise_for_status()
+            data = r.json()
+            return float(data.get("markPrice", 0))
+        except Exception:
+            return 0.0
+
     def is_symbol_active(self, symbol: str) -> bool:
         # Simple caching mechanism (refresh every 1 hour)
         if not hasattr(self, '_active_symbols') or time.time() - getattr(self, '_last_update', 0) > 3600:
@@ -81,3 +114,13 @@ class AsterdexAdapter(ExchangeInterface):
                 return True # Default to True to avoid blocking if API fails, but log error
         
         return symbol in self._active_symbols
+
+    def test_connection(self) -> bool:
+        """Simple liveness check using public endpoint"""
+        try:
+            resp = requests.get(f"{self.base_url}/fapi/v3/premiumIndex", timeout=5)
+            resp.raise_for_status()
+            return True
+        except Exception as e:
+            print(f"[Asterdex] Connection test failed: {e}")
+            return False

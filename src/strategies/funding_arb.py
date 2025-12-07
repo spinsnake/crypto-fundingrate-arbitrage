@@ -4,7 +4,7 @@ from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
 from ..config import (
     MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_USDT, ESTIMATED_FEE_PER_ROTATION,
-    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST
+    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST, SLIPPAGE_BPS
 )
 
 class FundingArbitrageStrategy(StrategyInterface):
@@ -46,15 +46,18 @@ class FundingArbitrageStrategy(StrategyInterface):
             if aster.taker_fee or hl.taker_fee:
                 fee_per_rotation = (aster.taker_fee + hl.taker_fee) * 2
 
+            # Slippage allowance per round (approx 4 legs * slippage_bps)
+            slippage_cost = (SLIPPAGE_BPS / 10000) * 4
+
             # Net per 8h round after fees (conservative: fee charged once per open+close)
-            net_per_round = diff - fee_per_rotation
+            net_per_round = diff - fee_per_rotation - slippage_cost
             
             # Project Returns
             daily_return = diff * 3
             monthly_gross = daily_return * 30
             
             # Net Return (Subtract Entry+Exit Fees ~0.2%)
-            monthly_net = monthly_gross - fee_per_rotation
+            monthly_net = monthly_gross - fee_per_rotation - slippage_cost
             
             # Filter by Threshold
             if monthly_net < MIN_MONTHLY_RETURN and not is_watched:
