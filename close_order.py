@@ -27,6 +27,8 @@ def main():
         print("[Close] No open positions found on either exchange.")
         return
 
+    summary = {"Asterdex": [], "Hyperliquid": []}
+
     for pos in positions:
         symbol = pos.get("symbol")
         side = pos.get("side", "").upper()
@@ -43,12 +45,14 @@ def main():
                     Order(symbol=symbol, side="SELL", quantity=qty, price=price, type="LIMIT")
                 )
                 print(f"[Close] Asterdex LONG {symbol} qty={qty} price={price} -> {res}")
+                summary["Asterdex"].append(res)
             elif side == "SHORT":
                 price = execu._price_with_slippage(book.get("ask", 0.0), "BUY")
                 res = aster.place_order(
                     Order(symbol=symbol, side="BUY", quantity=qty, price=price, type="LIMIT")
                 )
                 print(f"[Close] Asterdex SHORT {symbol} qty={qty} price={price} -> {res}")
+                summary["Asterdex"].append(res)
             else:
                 print(f"[Close] Asterdex unsupported side: {pos}")
 
@@ -60,16 +64,33 @@ def main():
                     Order(symbol=symbol, side="SELL", quantity=qty, price=price, type="LIMIT")
                 )
                 print(f"[Close] Hyperliquid LONG {symbol} qty={qty} price={price} -> {res}")
+                summary["Hyperliquid"].append(res)
             elif side == "SHORT":
                 price = execu._price_with_slippage(book.get("ask", 0.0), "BUY")
                 res = hyper.place_order(
                     Order(symbol=symbol, side="BUY", quantity=qty, price=price, type="LIMIT")
                 )
                 print(f"[Close] Hyperliquid SHORT {symbol} qty={qty} price={price} -> {res}")
+                summary["Hyperliquid"].append(res)
             else:
                 print(f"[Close] Hyperliquid unsupported side: {pos}")
         else:
             print(f"[Close] Unsupported exchange: {pos}")
+
+    # Summary
+    def summarize(lst):
+        if not lst:
+            return "no orders"
+        # prefer 'status' field
+        statuses = []
+        for r in lst:
+            if isinstance(r, dict):
+                st = r.get("status") or r.get("response", {}).get("status")
+                statuses.append(st or "unknown")
+        return ", ".join(statuses) if statuses else "unknown"
+
+    print(f"[Summary] Asterdex close: {summarize(summary['Asterdex'])}")
+    print(f"[Summary] Hyperliquid close: {summarize(summary['Hyperliquid'])}")
 
 
 if __name__ == "__main__":
