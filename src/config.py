@@ -13,7 +13,7 @@ HYPERLIQUID_TAKER_FEE = 0.00045  # 0.045% base taker
 # Filter Settings
 ENABLE_VOLUME_FILTER = True
 ENABLE_DELIST_FILTER = True
-WATCHLIST = [] # Symbols to monitor regardless of profit (e.g. ["HEMI", "ETH"])
+WATCHLIST = ["HEMI"] # Symbols to monitor regardless of profit (e.g. ["HEMI", "ETH"])
 
 # Execution Settings
 ENABLE_TRADING = False # SAFETY: Start with False (Alert Mode)

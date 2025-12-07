@@ -45,6 +45,9 @@ class FundingArbitrageStrategy(StrategyInterface):
             fee_per_rotation = ESTIMATED_FEE_PER_ROTATION
             if aster.taker_fee or hl.taker_fee:
                 fee_per_rotation = (aster.taker_fee + hl.taker_fee) * 2
+
+            # Net per 8h round after fees (conservative: fee charged once per open+close)
+            net_per_round = diff - fee_per_rotation
             
             # Project Returns
             daily_return = diff * 3
@@ -89,6 +92,8 @@ class FundingArbitrageStrategy(StrategyInterface):
                 exchange_long=exchange_long,
                 exchange_short=exchange_short,
                 spread=diff,
+                spread_net=net_per_round,
+                round_return_net=net_per_round,
                 projected_monthly_return=monthly_net,
                 timestamp=int(time.time() * 1000),
                 next_funding_time=next_payout,
