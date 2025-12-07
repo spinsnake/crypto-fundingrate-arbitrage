@@ -10,6 +10,7 @@ ESTIMATED_FEE_PER_ROTATION = 0.002 # Fallback if fee data missing
 ASTERDEX_TAKER_FEE = 0.0005  # 0.05% base taker
 HYPERLIQUID_TAKER_FEE = 0.00045  # 0.045% base taker
 SLIPPAGE_BPS = 10  # per leg slippage allowance in bps (0.01%); used for net return calc and limit price buffer
+DEFAULT_LEVERAGE = 2  # desired leverage per leg
 
 # Filter Settings
 ENABLE_VOLUME_FILTER = True

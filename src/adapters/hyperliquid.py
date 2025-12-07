@@ -1,11 +1,21 @@
 import os
 import requests
 import time
-from typing import Dict, Any
+from typing import Dict, Any, List
 from dotenv import load_dotenv
 from ..core.interfaces import ExchangeInterface
 from ..core.models import FundingRate, Order
-from ..config import HYPERLIQUID_API_URL, HYPERLIQUID_TAKER_FEE
+from ..config import HYPERLIQUID_API_URL, HYPERLIQUID_TAKER_FEE, DEFAULT_LEVERAGE
+
+# Hyperliquid SDK (best effort import)
+try:
+    from hyperliquid.exchange import Exchange as HlExchange
+    from hyperliquid.info import Info as HlInfo
+    from hyperliquid.utils import constants as hl_constants
+except Exception:
+    HlExchange = None
+    HlInfo = None
+    hl_constants = None
 
 load_dotenv()
 
@@ -14,6 +24,19 @@ class HyperliquidAdapter(ExchangeInterface):
         self.private_key = private_key or os.getenv("hyperliquid_private_key", "")
         self.wallet_address = os.getenv("hyperliquid_wallet_address", "")
         self.base_url = HYPERLIQUID_API_URL
+        self.leverage = DEFAULT_LEVERAGE
+
+        if HlExchange and hl_constants and self.private_key:
+            try:
+                self._exchange = HlExchange(self.private_key, hl_constants.MAINNET_API_URL, account_address=self.wallet_address)
+                self._info = HlInfo(hl_constants.MAINNET_API_URL)
+            except Exception as e:
+                print(f"[Hyperliquid] SDK init failed, using mock: {e}")
+                self._exchange = None
+                self._info = None
+        else:
+            self._exchange = None
+            self._info = None
 
     def get_name(self) -> str:
         return "Hyperliquid"
@@ -55,13 +78,63 @@ class HyperliquidAdapter(ExchangeInterface):
             return {}
 
     def get_balance(self) -> float:
-        # TODO: Implement balance check
-        return 0.0
+        if not self._info or not self.wallet_address:
+            return 0.0
+        try:
+            state = self._info.user_state(self.wallet_address)
+            return float(state.get("marginSummary", {}).get("accountValue", 0))
+        except Exception:
+            return 0.0
 
     def place_order(self, order: Order) -> Dict:
-        # TODO: Implement order placement
-        print(f"[Hyperliquid] Mock Order Placed: {order}")
-        return {"status": "mock_success", "order_id": "mock_456"}
+        # Use SDK if available; otherwise mock
+        if not self._exchange:
+            print(f"[Hyperliquid] Mock Order Placed: {order}")
+            return {"status": "mock_success", "order_id": "mock_456"}
+
+        is_buy = order.side.upper() == "BUY"
+        tif = {"limit": {"tif": "Gtc"}} if order.type.upper() == "LIMIT" else {"market": {}}
+        leverage = order.leverage or self.leverage
+
+        try:
+            if hasattr(self._exchange, "update_leverage"):
+                try:
+                    self._exchange.update_leverage(leverage)
+                except Exception as le:
+                    print(f"[Hyperliquid] set leverage failed (ignored): {le}")
+
+            resp = self._exchange.order(
+                order.symbol,
+                is_buy,
+                order.quantity,
+                order.price if order.type.upper() == "LIMIT" else None,
+                tif,
+                reduce_only=False,
+            )
+            return resp
+        except Exception as e:
+            print(f"[Hyperliquid] Order failed: {e}")
+            return {"status": "error", "error": str(e)}
+
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        if not self._info or not self.wallet_address:
+            print("[Hyperliquid] get_open_positions using mock (empty)")
+            return []
+        try:
+            state = self._info.user_state(self.wallet_address)
+            positions = []
+            for pos in state.get("assetPositions", []):
+                coin = pos.get("coin")
+                p = pos.get("position", {})
+                sz = float(p.get("szi", 0))
+                if sz == 0:
+                    continue
+                side = "LONG" if sz > 0 else "SHORT"
+                positions.append({"symbol": coin, "side": side, "quantity": abs(sz)})
+            return positions
+        except Exception as e:
+            print(f"[Hyperliquid] get_open_positions failed: {e}")
+            return []
 
     def get_top_of_book(self, symbol: str) -> Dict[str, float]:
         """

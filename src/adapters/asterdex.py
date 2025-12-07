@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 from ..core.interfaces import ExchangeInterface
 from ..core.models import FundingRate, Order
 from ..config import ASTERDEX_API_URL, ASTERDEX_TAKER_FEE
+import hmac
+import hashlib
+import urllib.parse
 
 load_dotenv()
 
@@ -59,13 +62,76 @@ class AsterdexAdapter(ExchangeInterface):
             return {}
 
     def get_balance(self) -> float:
-        # TODO: Implement signed request for balance
+        # Placeholder: would require signed request to account endpoint
         return 0.0
 
     def place_order(self, order: Order) -> Dict:
-        # TODO: Implement signed request for order
-        print(f"[Asterdex] Mock Order Placed: {order}")
-        return {"status": "mock_success", "order_id": "mock_123"}
+        """
+        Best-effort Binance-style signed order. Falls back to mock if keys missing or call fails.
+        """
+        if not self.api_key or not self.api_secret:
+            print(f"[Asterdex] Mock Order Placed (no API key/secret): {order}")
+            return {"status": "mock_success", "order_id": "mock_123"}
+
+        endpoint = "/fapi/v1/order"
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": f"{order.symbol}USDT",
+            "side": order.side,
+            "type": order.type,
+            "quantity": order.quantity,
+            "timestamp": timestamp,
+        }
+        if order.type.upper() == "LIMIT":
+            params["price"] = order.price
+            params["timeInForce"] = "GTC"
+        query = urllib.parse.urlencode(params)
+        signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+        params["signature"] = signature
+
+        headers = {"X-MBX-APIKEY": self.api_key}
+        try:
+            resp = requests.post(f"{self.base_url}{endpoint}", params=params, headers=headers, timeout=10)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            print(f"[Asterdex] Order failed, falling back to mock: {e}")
+            print(f"[Asterdex] Mock Order Placed: {order}")
+            return {"status": "mock_success", "order_id": "mock_asterdex_fallback"}
+
+    def get_open_positions(self) -> list:
+        """
+        Best-effort to fetch positions via Binance-style endpoint; fallback empty on failure.
+        """
+        if not self.api_key or not self.api_secret:
+            print("[Asterdex] get_open_positions using mock (no API key/secret)")
+            return []
+        endpoint = "/fapi/v2/positionRisk"
+        timestamp = int(time.time() * 1000)
+        params = {"timestamp": timestamp}
+        query = urllib.parse.urlencode(params)
+        signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+        params["signature"] = signature
+        headers = {"X-MBX-APIKEY": self.api_key}
+        try:
+            resp = requests.get(f"{self.base_url}{endpoint}", params=params, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            positions = []
+            for p in data:
+                amt = float(p.get("positionAmt", 0))
+                if amt == 0:
+                    continue
+                sym = p.get("symbol", "")
+                if not sym.endswith("USDT"):
+                    continue
+                base = sym[:-4]
+                side = "LONG" if amt > 0 else "SHORT"
+                positions.append({"symbol": base, "side": side, "quantity": abs(amt)})
+            return positions
+        except Exception as e:
+            print(f"[Asterdex] get_open_positions failed: {e}")
+            return []
 
     def get_top_of_book(self, symbol: str) -> Dict[str, float]:
         """

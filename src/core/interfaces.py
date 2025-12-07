@@ -31,6 +31,13 @@ class ExchangeInterface(ABC):
         """Get best bid/ask for a symbol. Returns {'bid': float, 'ask': float}"""
         pass
 
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        """
+        Return a list of open positions.
+        Expected keys: symbol, side ("LONG"/"SHORT"), quantity (base units)
+        """
+        pass
+
 class StrategyInterface(ABC):
     @abstractmethod
     def analyze(self, market_data: Dict[str, Dict[str, FundingRate]]) -> List[Signal]:

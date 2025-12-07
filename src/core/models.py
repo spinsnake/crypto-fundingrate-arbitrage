@@ -36,3 +36,4 @@ class Order:
     quantity: float
     price: Optional[float] = None
     type: str = "MARKET"
+    leverage: float = 1.0

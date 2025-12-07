@@ -1,13 +1,14 @@
 from typing import Dict
 from .models import Order
-from ..config import SLIPPAGE_BPS
+from ..config import SLIPPAGE_BPS, DEFAULT_LEVERAGE
 
 
 class ExecutionManager:
     """Simple helper to open/close spread legs with limit price buffers."""
 
-    def __init__(self, slippage_bps: int = SLIPPAGE_BPS):
+    def __init__(self, slippage_bps: int = SLIPPAGE_BPS, leverage: float = DEFAULT_LEVERAGE):
         self.slippage_factor = slippage_bps / 10000
+        self.leverage = leverage
 
     def _price_with_slippage(self, ref_price: float, side: str) -> float:
         """Apply slippage buffer to ref price."""
@@ -41,10 +42,10 @@ class ExecutionManager:
         qty_short = notional / short_price
 
         res_long = exchange_long.place_order(
-            Order(symbol=symbol, side="BUY", quantity=qty_long, price=long_price, type="LIMIT")
+            Order(symbol=symbol, side="BUY", quantity=qty_long, price=long_price, type="LIMIT", leverage=self.leverage)
         )
         res_short = exchange_short.place_order(
-            Order(symbol=symbol, side="SELL", quantity=qty_short, price=short_price, type="LIMIT")
+            Order(symbol=symbol, side="SELL", quantity=qty_short, price=short_price, type="LIMIT", leverage=self.leverage)
         )
 
         return {"long": res_long, "short": res_short}
@@ -69,10 +70,10 @@ class ExecutionManager:
             return {"status": "error", "reason": "Invalid book prices"}
 
         res_close_long = exchange_long.place_order(
-            Order(symbol=symbol, side="SELL", quantity=qty_long, price=sell_price, type="LIMIT")
+            Order(symbol=symbol, side="SELL", quantity=qty_long, price=sell_price, type="LIMIT", leverage=self.leverage)
         )
         res_close_short = exchange_short.place_order(
-            Order(symbol=symbol, side="BUY", quantity=qty_short, price=buy_price, type="LIMIT")
+            Order(symbol=symbol, side="BUY", quantity=qty_short, price=buy_price, type="LIMIT", leverage=self.leverage)
         )
 
         return {"close_long": res_close_long, "close_short": res_close_short}
