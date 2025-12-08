@@ -10,6 +10,7 @@ import hmac
 import hashlib
 import urllib.parse
 from collections import OrderedDict
+from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
 load_dotenv()
 
@@ -153,13 +154,19 @@ class AsterdexAdapter(ExchangeInterface):
         step = f.get("stepSize", 0)
         tick = f.get("tickSize", 0)
 
-        def _round(value: float, step_size: float) -> float:
-            if step_size <= 0:
-                return value
-            return max(step_size, (int(value / step_size)) * step_size)
+        def _quant(val: float, step_size: float) -> float:
+            if step_size and step_size > 0:
+                try:
+                    q = Decimal(str(step_size))
+                    v = Decimal(str(val))
+                    return float((v // q) * q)
+                except (InvalidOperation, ValueError):
+                    pass
+            # fallback: trim precision
+            return float(Decimal(str(val)).quantize(Decimal("0.0001"), rounding=ROUND_DOWN))
 
-        qty_r = _round(qty, step)
-        px_r = _round(price, tick) if price is not None else None
+        qty_r = _quant(qty, step)
+        px_r = _quant(price, tick) if price is not None else None
         return qty_r, px_r
 
     def _load_filters(self):

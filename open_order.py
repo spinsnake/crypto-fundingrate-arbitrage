@@ -14,7 +14,7 @@ from src.adapters.hyperliquid import HyperliquidAdapter  # noqa: E402
 from src.core.execution_manager import ExecutionManager  # noqa: E402
 
 SYMBOL = "MOODENG"
-NOTIONAL = 15  # per leg in quote (USDT/USDC)
+NOTIONAL = 560  # per leg in quote (USDT/USDC)
 
 
 def within_window_bkk(window_minutes: int = 30) -> tuple[bool, float, str]:

@@ -53,11 +53,8 @@ class FundingArbitrageStrategy(StrategyInterface):
             net_per_round = diff - fee_per_rotation - slippage_cost
             
             # Project Returns
-            daily_return = diff * 3
-            monthly_gross = daily_return * 30
-            
-            # Net Return (Subtract Entry+Exit Fees ~0.2%)
-            monthly_net = monthly_gross - fee_per_rotation - slippage_cost
+            daily_return_net = net_per_round * 3
+            monthly_net = daily_return_net * 30  # net across 30 days (90 rounds)
             
             # Filter by Threshold
             if monthly_net < MIN_MONTHLY_RETURN and not is_watched:
@@ -83,9 +80,11 @@ class FundingArbitrageStrategy(StrategyInterface):
             next_payout = max(aster.next_funding_time, hl.next_funding_time)
 
             # Calculate Break-Even Rounds (Fee / Spread)
-            # Avoid division by zero
-            if diff > 0:
-                break_even_rounds = int((fee_per_rotation / diff) + 0.99) # Ceiling division
+            # Avoid division by zero and handle negative net
+            if net_per_round > 0:
+                break_even_rounds = 1  # net positive per round -> already break-even
+            elif diff > 0:
+                break_even_rounds = 999  # negative net, effectively not break-even
             else:
                 break_even_rounds = 999
 
