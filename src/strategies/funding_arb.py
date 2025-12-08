@@ -56,8 +56,8 @@ class FundingArbitrageStrategy(StrategyInterface):
             daily_return_net = net_per_round * 3
             monthly_net = daily_return_net * 30  # net across 30 days (90 rounds)
             
-            # Filter by Threshold
-            if monthly_net < MIN_MONTHLY_RETURN and not is_watched:
+            # Filter by per-round net (we target positive net per round)
+            if net_per_round <= 0 and not is_watched:
                 continue
             
             # Check for Negative/Warning for Watchlist

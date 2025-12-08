@@ -91,3 +91,11 @@ We added simple scripts to open/close the spread with limit + slippage buffer (u
 Notes:
 - Scripts use limit orders with slippage buffer from `SLIPPAGE_BPS` in `src/config.py`.
 - Adapters currently have mock `place_order`; wire to real API before trading live.
+
+---
+
+## 6. Signal Filters (Current Logic)
+- Must have data from both exchanges; passes delist/volume filters (unless in `WATCHLIST`).
+- Net per 8h round is `diff - fees - slippage`. Signals are shown only if **net_per_round > 0** (watchlist bypass).
+- Monthly projection shown is informational only (net_per_round * 90); not used to filter signals.
+- Break-even: if net_per_round > 0 → 1 round, else 999 (not profitable per round).
