@@ -3,10 +3,13 @@ import pandas as pd
 import time
 
 # --- Configuration ---
-ASTERDEX_API_URL = "https://fapi.asterdex.com"
-HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
-MIN_VOLUME_USDT = 1000000  # Filter out dead coins (1M daily volume)
-TARGET_MONTHLY_RETURN = 0.04 # 4%
+from src.config import (
+    ASTERDEX_API_URL,
+    HYPERLIQUID_API_URL,
+    MIN_VOLUME_USDT,
+    TARGET_MONTHLY_RETURN,
+    MIN_MONTHLY_RETURN,
+)
 
 def fetch_asterdex_all_funding():
     """Fetch funding rates for ALL symbols from Asterdex"""
@@ -107,8 +110,8 @@ def main():
             direction = "Short Aster / Long HL"
             net_rate_per_round = aster_rate - hl_rate
             
-        # Filter by Target
-        if monthly_return > 0.01: # Show anything > 1% to see what's out there
+        # Filter by minimum monthly return (config-driven)
+        if monthly_return > MIN_MONTHLY_RETURN:
             opportunities.append({
                 'Symbol': symbol,
                 'Monthly %': round(monthly_return * 100, 2),

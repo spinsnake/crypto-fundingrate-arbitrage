@@ -4,8 +4,9 @@ HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
 
 # Strategy Settings
 MIN_MONTHLY_RETURN = 0.02  # (break even in 1 round)
+TARGET_MONTHLY_RETURN = 0.04  # Used by funding_scanner (default 4% goal)
 MIN_SPREAD_PER_ROUND = 0.002 # 0.2% per 8h
-MIN_VOLUME_USDT = 500000 # Daily Volume
+MIN_VOLUME_USDT = 100000 # Daily Volume
 ESTIMATED_FEE_PER_ROTATION = 0.002 # Fallback if fee data missing
 ASTERDEX_TAKER_FEE = 0.0005  # 0.05% base taker
 HYPERLIQUID_TAKER_FEE = 0.00045  # 0.045% base taker
@@ -25,4 +26,7 @@ POLL_INTERVAL = 60 # Check every 60 seconds
 TELEGRAM_BOT_TOKEN = "" # User to fill
 TELEGRAM_CHAT_ID = ""   # User to fill
 DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1446766608264593519/gDLfrmOsdGmfQLRjihkQjkWk0ySS7jkKcaytdaxOa64wZBdAEnoFXUtEfCxSu_OQHM0Q"
+
+# Debugging
+DEBUG_FILTER_LOG = False  # Set True to print why symbols are filtered out (volume, inactive, net<=0, etc.)
 

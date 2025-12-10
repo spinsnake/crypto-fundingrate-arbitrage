@@ -4,18 +4,24 @@ from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
 from ..config import (
     MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_USDT, ESTIMATED_FEE_PER_ROTATION,
-    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST, SLIPPAGE_BPS
+    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST, SLIPPAGE_BPS, DEBUG_FILTER_LOG
 )
 
 class FundingArbitrageStrategy(StrategyInterface):
     def analyze(self, market_data: Dict[str, Dict[str, FundingRate]]) -> List[Signal]:
         signals = []
+        debug = DEBUG_FILTER_LOG
         
         # market_data structure: { 'BTC': { 'Asterdex': RateObj, 'Hyperliquid': RateObj } }
-        
+
+        def log_skip(symbol: str, reason: str):
+            if debug:
+                print(f"[Filter] {symbol}: {reason}")
+
         for symbol, rates in market_data.items():
             # We need at least 2 exchanges to compare
             if len(rates) < 2:
+                log_skip(symbol, f"missing second exchange (have {list(rates.keys())})")
                 continue
                 
             # For this specific strategy, we look for Asterdex vs Hyperliquid
@@ -23,6 +29,7 @@ class FundingArbitrageStrategy(StrategyInterface):
             hl = rates.get('Hyperliquid')
             
             if not aster or not hl:
+                log_skip(symbol, "missing Asterdex or Hyperliquid rate")
                 continue
 
             is_watched = symbol in WATCHLIST
@@ -31,11 +38,13 @@ class FundingArbitrageStrategy(StrategyInterface):
             # Delist/Inactive Check
             if ENABLE_DELIST_FILTER and not is_watched:
                 if not aster.is_active or not hl.is_active:
+                    log_skip(symbol, f"inactive: aster_active={aster.is_active} hl_active={hl.is_active}")
                     continue
 
             # Volume Check
             if ENABLE_VOLUME_FILTER and not is_watched:
                 if aster.volume_24h < MIN_VOLUME_USDT or hl.volume_24h < MIN_VOLUME_USDT:
+                    log_skip(symbol, f"low volume: aster={aster.volume_24h:.0f} hl={hl.volume_24h:.0f} (min {MIN_VOLUME_USDT})")
                     continue
                 
             # Calculate Spread
@@ -58,6 +67,10 @@ class FundingArbitrageStrategy(StrategyInterface):
             
             # Filter by per-round net (we target positive net per round)
             if net_per_round <= 0 and not is_watched:
+                log_skip(
+                    symbol,
+                    f"net<=0: spread={diff:.6f} fee={fee_per_rotation:.6f} slippage={slippage_cost:.6f} net={net_per_round:.6f}"
+                )
                 continue
             
             # Check for Negative/Warning for Watchlist
