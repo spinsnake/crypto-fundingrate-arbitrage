@@ -1,6 +1,5 @@
 import time
 import sys
-from datetime import datetime, timedelta, timezone
 from src.adapters.asterdex import AsterdexAdapter
 from src.adapters.hyperliquid import HyperliquidAdapter
 from src.strategies.funding_arb import FundingArbitrageStrategy
@@ -8,6 +7,7 @@ from src.notification.telegram import TelegramNotifier
 from src.notification.discord import DiscordNotifier
 from src.config import POLL_INTERVAL, ENABLE_TRADING, WATCHLIST
 from src.core.execution_manager import ExecutionManager
+from src.utils.time_helper import TimeHelper
 
 
 def main():
@@ -27,9 +27,7 @@ def main():
 
     while True:
         try:
-            now_utc = datetime.now(timezone.utc)
-            now_bkk = now_utc + timedelta(hours=7)
-            time_str = now_bkk.strftime("%H:%M:%S")
+            time_str = TimeHelper.now_bkk_str()
 
             print(f"\n[Scanning {time_str}] Fetching market data...")
             market_data = {}  # { 'BTC': { 'Asterdex': Rate, 'Hyperliquid': Rate } }
@@ -52,24 +50,14 @@ def main():
 
                 if final_signals:
                     top_signal = final_signals[0]
-
-                    now_ms = int(time.time() * 1000)
                     
-                    # Asterdex payout (every 8h - the important one)
-                    aster_diff_ms = top_signal.next_aster_payout - now_ms
-                    aster_mins_left = max(0, int(aster_diff_ms / 60000))
-                    aster_dt_utc = datetime.fromtimestamp(
-                        top_signal.next_aster_payout / 1000, tz=timezone.utc
-                    )
-                    aster_bkk = (aster_dt_utc + timedelta(hours=7)).strftime("%H:%M")
+                    # Asterdex payout
+                    aster_mins_left = TimeHelper.ms_to_mins_remaining(top_signal.next_aster_payout)
+                    aster_bkk = TimeHelper.ms_to_bkk_str(top_signal.next_aster_payout)
                     
-                    # HL payout (every 1h)
-                    hl_diff_ms = top_signal.next_hl_payout - now_ms
-                    hl_mins_left = max(0, int(hl_diff_ms / 60000))
-                    hl_dt_utc = datetime.fromtimestamp(
-                        top_signal.next_hl_payout / 1000, tz=timezone.utc
-                    )
-                    hl_bkk = (hl_dt_utc + timedelta(hours=7)).strftime("%H:%M")
+                    # HL payout
+                    hl_mins_left = TimeHelper.ms_to_mins_remaining(top_signal.next_hl_payout)
+                    hl_bkk = TimeHelper.ms_to_bkk_str(top_signal.next_hl_payout)
 
                     icon = "🚀" if top_signal.is_watchlist else "✨"
                     warning_text = f"\n{top_signal.warning}" if top_signal.warning else ""

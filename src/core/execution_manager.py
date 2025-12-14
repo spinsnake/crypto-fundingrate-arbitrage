@@ -114,15 +114,20 @@ class ExecutionManager:
         import csv
         import time
         from datetime import datetime
+        import os
+        
+        log_file = "logs/trade_log.csv"
+        # Ensure dir exists
+        os.makedirs("logs", exist_ok=True)
         
         file_exists = False
         try:
-            with open("trade_log.csv", "r") as f:
+            with open(log_file, "r") as f:
                 file_exists = True
         except FileNotFoundError:
             pass
             
-        with open("trade_log.csv", "a", newline="") as f:
+        with open(log_file, "a", newline="") as f:
             writer = csv.writer(f)
             if not file_exists:
                 writer.writerow([
@@ -143,13 +148,14 @@ class ExecutionManager:
                 ex_short, f"{px_short:.6f}", f"{qty_short:.6f}", res_short.get("status", "unknown"),
                 f"{notional:.2f}", f"{fee:.4f}"
             ])
-            print(f"[Log] Recorded {action} trade for {symbol} to trade_log.csv")
+            print(f"[Log] Recorded {action} trade for {symbol} to {log_file}")
 
     def _find_trade_start_time(self, symbol: str) -> int:
         import csv
         from datetime import datetime
+        log_file = "logs/trade_log.csv"
         try:
-            with open("trade_log.csv", "r") as f:
+            with open(log_file, "r") as f:
                 # Read all lines to handle reversing
                 lines = f.readlines()
                 if not lines:
@@ -167,7 +173,8 @@ class ExecutionManager:
                         dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
                         return int(dt.timestamp() * 1000)
         except Exception as e:
-            print(f"[Funding] Error searching logs: {e}")
+            # print(f"[Funding] Error searching logs: {e}") 
+            pass
         return 0
 
     def get_last_open_trade(self, symbol: str) -> dict:
@@ -177,8 +184,9 @@ class ExecutionManager:
         """
         import csv
         from datetime import datetime
+        log_file = "logs/trade_log.csv"
         try:
-            with open("trade_log.csv", "r") as f:
+            with open(log_file, "r") as f:
                 lines = f.readlines()
                 if not lines:
                      return None
