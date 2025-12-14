@@ -52,14 +52,22 @@ def main():
                     top_signal = final_signals[0]
 
                     now_ms = int(time.time() * 1000)
-                    diff_ms = top_signal.next_funding_time - now_ms
-                    minutes_left = max(0, int(diff_ms / 60000))
-
-                    payout_dt_utc = datetime.fromtimestamp(
-                        top_signal.next_funding_time / 1000, tz=timezone.utc
+                    
+                    # Asterdex payout (every 8h - the important one)
+                    aster_diff_ms = top_signal.next_aster_payout - now_ms
+                    aster_mins_left = max(0, int(aster_diff_ms / 60000))
+                    aster_dt_utc = datetime.fromtimestamp(
+                        top_signal.next_aster_payout / 1000, tz=timezone.utc
                     )
-                    bkk_time = payout_dt_utc + timedelta(hours=7)
-                    bkk_str = bkk_time.strftime("%H:%M")
+                    aster_bkk = (aster_dt_utc + timedelta(hours=7)).strftime("%H:%M")
+                    
+                    # HL payout (every 1h)
+                    hl_diff_ms = top_signal.next_hl_payout - now_ms
+                    hl_mins_left = max(0, int(hl_diff_ms / 60000))
+                    hl_dt_utc = datetime.fromtimestamp(
+                        top_signal.next_hl_payout / 1000, tz=timezone.utc
+                    )
+                    hl_bkk = (hl_dt_utc + timedelta(hours=7)).strftime("%H:%M")
 
                     icon = "🚀" if top_signal.is_watchlist else "✨"
                     warning_text = f"\n{top_signal.warning}" if top_signal.warning else ""
@@ -72,7 +80,8 @@ def main():
                         f"↔️ Spread (8h, net of fees): {top_signal.spread_net*100:.4f}%\n"
                         f"🛡️ Round Return (after fees, 1 round): {top_signal.round_return_net*100:.4f}%\n"
                         f"⏳ Min Hold: {top_signal.break_even_rounds} Rounds (~{hold_hours} Hours) to Break Even\n"
-                        f"⏱️ Next Payout: in {minutes_left} mins ({bkk_str} BKK)\n"
+                        f"⏱️ Asterdex Payout: in {aster_mins_left} mins ({aster_bkk} BKK)\n"
+                        f"⏱️ HL Payout: in {hl_mins_left} mins ({hl_bkk} BKK)\n"
                         f"action: {top_signal.direction}\n"
                         f"(Long {top_signal.exchange_long} / Short {top_signal.exchange_short})"
                     )

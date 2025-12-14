@@ -69,7 +69,8 @@ class HyperliquidAdapter(ExchangeInterface):
                 
                 rates[symbol] = FundingRate(
                     symbol=symbol,
-                    rate=float(ctx.get('funding', 0)),
+                    # Hyperliquid funding is HOURLY; normalize to 8h to match Asterdex
+                    rate=float(ctx.get('funding', 0)) * 8,
                     mark_price=float(ctx.get('markPx', 0)),
                     source=self.get_name(),
                     timestamp=int(time.time() * 1000),

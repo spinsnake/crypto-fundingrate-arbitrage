@@ -28,6 +28,8 @@ class Signal:
     is_watchlist: bool = False
     warning: str = ""
     break_even_rounds: int = 0
+    next_aster_payout: int = 0  # Asterdex settlement time (every 8h)
+    next_hl_payout: int = 0  # Hyperliquid settlement time (every 1h)
 
 @dataclass
 class Order:

@@ -15,6 +15,7 @@ from src.core.execution_manager import ExecutionManager  # noqa: E402
 
 SYMBOL = "MOODENG"
 NOTIONAL = 560  # per leg in quote (USDT/USDC)
+DIRECTION = "LONG_HL_SHORT_ASTER"  # Options: "LONG_HL_SHORT_ASTER" or "LONG_ASTER_SHORT_HL"
 
 
 def within_window_bkk(window_minutes: int = 30) -> tuple[bool, float, str]:
@@ -47,8 +48,22 @@ def main():
     hyper = HyperliquidAdapter()
     execu = ExecutionManager()
 
-    print(f"[Open] symbol={SYMBOL} notional={NOTIONAL} (next payout {target_str} BKK in {mins:.1f} mins)")
-    res = execu.open_spread(SYMBOL, NOTIONAL, exchange_long=aster, exchange_short=hyper)
+    # Determine long/short based on DIRECTION
+    if DIRECTION == "LONG_HL_SHORT_ASTER":
+        exchange_long = hyper
+        exchange_short = aster
+        long_name = "Hyperliquid"
+        short_name = "Asterdex"
+    else:  # LONG_ASTER_SHORT_HL
+        exchange_long = aster
+        exchange_short = hyper
+        long_name = "Asterdex"
+        short_name = "Hyperliquid"
+
+    print(f"[Open] symbol={SYMBOL} notional={NOTIONAL} direction={DIRECTION}")
+    print(f"[Open] Long on {long_name}, Short on {short_name}")
+    print(f"[Open] Next payout {target_str} BKK in {mins:.1f} mins")
+    res = execu.open_spread(SYMBOL, NOTIONAL, exchange_long=exchange_long, exchange_short=exchange_short)
     # Summarize per exchange
     long_res = res.get("long", {})
     short_res = res.get("short", {})

@@ -1,10 +1,12 @@
 from typing import List, Dict
 import time
+import math
 from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
 from ..config import (
     MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_USDT, ESTIMATED_FEE_PER_ROTATION,
-    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST, SLIPPAGE_BPS, DEBUG_FILTER_LOG
+    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST, SLIPPAGE_BPS, DEBUG_FILTER_LOG,
+    MAX_BREAK_EVEN_ROUNDS
 )
 
 class FundingArbitrageStrategy(StrategyInterface):
@@ -61,17 +63,33 @@ class FundingArbitrageStrategy(StrategyInterface):
             # Net per 8h round after fees (conservative: fee charged once per open+close)
             net_per_round = diff - fee_per_rotation - slippage_cost
             
-            # Project Returns
-            daily_return_net = net_per_round * 3
-            monthly_net = daily_return_net * 30  # net across 30 days (90 rounds)
+            # Project Returns for HOLDING strategy:
+            # Revenue = Spread * 90 rounds (30 days), Cost = Fee + Slippage (paid once)
+            monthly_revenue = diff * 90
+            monthly_net = monthly_revenue - (fee_per_rotation + slippage_cost)
             
             # Filter by per-round net (we target positive net per round)
-            if net_per_round <= 0 and not is_watched:
-                log_skip(
+            # Filter by break-even horizon
+            # We want to see if we can break even within MAX_BREAK_EVEN_ROUNDS
+            # Total Cost (Fee + Slippage) <= Spread * Rounds
+            
+            # Note: "net_per_round" variable above is calculated as (diff - fee - slippage), 
+            # which assumes 1 round. If net_per_round > 0, it means we break even in < 1 round.
+            
+            # If we allow more rounds, we need to check:
+            # (diff * MAX_BREAK_EVEN_ROUNDS) - fee_per_rotation - slippage_cost > 0
+            # or equivalently: revenue_over_horizon > total_cost
+            
+            potential_revenue = diff * MAX_BREAK_EVEN_ROUNDS
+            total_cost = fee_per_rotation + slippage_cost
+            net_over_horizon = potential_revenue - total_cost
+
+            if net_over_horizon <= 0 and not is_watched:
+                 log_skip(
                     symbol,
-                    f"net<=0: spread={diff:.6f} fee={fee_per_rotation:.6f} slippage={slippage_cost:.6f} net={net_per_round:.6f}"
+                    f"net<=0 (max {MAX_BREAK_EVEN_ROUNDS} rnds): spread={diff:.6f} cost={total_cost:.6f} net_horizon={net_over_horizon:.6f}"
                 )
-                continue
+                 continue
             
             # Check for Negative/Warning for Watchlist
             if is_watched and monthly_net < 0:
@@ -94,10 +112,18 @@ class FundingArbitrageStrategy(StrategyInterface):
 
             # Calculate Break-Even Rounds (Fee / Spread)
             # Avoid division by zero and handle negative net
-            if net_per_round > 0:
-                break_even_rounds = 1  # net positive per round -> already break-even
-            elif diff > 0:
-                break_even_rounds = 999  # negative net, effectively not break-even
+            # Calculate Break-Even Rounds (Fee / Spread)
+            # Avoid division by zero
+            if diff > 0:
+                 # Rounds needed to cover total cost
+                 # Cost = Fee + Slippage
+                 # Revenue per round = diff
+                 # Rounds = Cost / diff
+                 rounds_needed = (fee_per_rotation + slippage_cost) / diff
+                 
+                 # If rounds_needed < 1, it means we profit in first round.
+                 # If rounds_needed is 1.5, we break even in 2nd round.
+                 break_even_rounds = math.ceil(rounds_needed)
             else:
                 break_even_rounds = 999
 
@@ -114,7 +140,9 @@ class FundingArbitrageStrategy(StrategyInterface):
                 next_funding_time=next_payout,
                 is_watchlist=is_watched,
                 warning=warning_msg,
-                break_even_rounds=break_even_rounds
+                break_even_rounds=break_even_rounds,
+                next_aster_payout=aster.next_funding_time,
+                next_hl_payout=hl.next_funding_time
             ))
             
         # Sort by profitability
