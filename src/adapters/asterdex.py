@@ -12,7 +12,11 @@ import urllib.parse
 from collections import OrderedDict
 from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
+import json
+
 load_dotenv()
+
+CACHE_FILE = "asterdex_intervals.json"
 
 class AsterdexAdapter(ExchangeInterface):
     def __init__(self, api_key: str = "", api_secret: str = ""):
@@ -20,6 +24,25 @@ class AsterdexAdapter(ExchangeInterface):
         self.api_secret = api_secret or os.getenv("asterdex_api_secret", "")
         self.base_url = ASTERDEX_API_URL
         self._filters: Dict[str, Dict[str, float]] = {}
+        self._interval_cache: Dict[str, int] = {} # Cache for funding intervals (hours)
+        self._load_cache()
+
+    def _load_cache(self):
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'r') as f:
+                    self._interval_cache = json.load(f)
+                print(f"[Asterdex] Loaded {len(self._interval_cache)} intervals from cache.")
+            except Exception as e:
+                print(f"[Asterdex] Failed to load cache: {e}")
+
+    def _save_cache(self):
+        try:
+            with open(CACHE_FILE, 'w') as f:
+                json.dump(self._interval_cache, f, indent=2)
+        except Exception as e:
+            print(f"[Asterdex] Failed to save cache: {e}")
+
 
     def get_name(self) -> str:
         return "Asterdex"
@@ -46,16 +69,29 @@ class AsterdexAdapter(ExchangeInterface):
                     continue
                     
                 # Convert ETHUSDT -> ETH
+                # Convert ETHUSDT -> ETH
                 base_symbol = symbol[:-4]
                 
+                # Get dynamic interval
+                interval_hours = self._get_funding_interval_hours(base_symbol)
+                norm_factor = 8 / interval_hours if interval_hours > 0 else 1
+                
+                # Use API provided nextFundingTime directly
+                next_funding_time = int(item.get('nextFundingTime', 0))
+                if next_funding_time == 0:
+                     # Fallback calculation if API missing
+                     now = time.time()
+                     interval_sec = interval_hours * 3600
+                     next_funding_time = int(((now // interval_sec) + 1) * interval_sec * 1000)
+
                 rates[base_symbol] = FundingRate(
                     symbol=base_symbol,
-                    rate=float(item.get('lastFundingRate', 0)),
+                    rate=float(item.get('lastFundingRate', 0)) * norm_factor, # Normalize to 8h
                     mark_price=float(item.get('markPrice', 0)),
                     source=self.get_name(),
                     timestamp=int(time.time() * 1000),
                     volume_24h=vol_map.get(symbol, 0.0),
-                    next_funding_time=self._get_next_funding_time(),
+                    next_funding_time=next_funding_time,
                     is_active=self.is_symbol_active(base_symbol),
                     taker_fee=ASTERDEX_TAKER_FEE
                 )
@@ -63,6 +99,7 @@ class AsterdexAdapter(ExchangeInterface):
         except Exception as e:
             print(f"[Asterdex] Error fetching rates: {e}")
             return {}
+
 
     def get_balance(self) -> float:
         # Placeholder: would require signed request to account endpoint
@@ -259,7 +296,6 @@ class AsterdexAdapter(ExchangeInterface):
         # Sign
         query = urllib.parse.urlencode(list(OrderedDict(params).items()))
         signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-        # params["signature"] = signature # Incorrect if order changes
 
         # Construct final URL with signature to ensure order matches
         final_query = f"{query}&signature={signature}"
@@ -270,36 +306,75 @@ class AsterdexAdapter(ExchangeInterface):
         }
 
         try:
-            # Send GET with manual query string to prevent re-ordering
+            # Send GET directly
             response = requests.get(f"{self.base_url}{endpoint}?{final_query}", headers=headers, timeout=10)
-            # print(f"[Asterdex DEBUG] URL: {response.url}") # Debug
             
             # Handle 401 specifically
             if response.status_code == 401:
                 print(f"[Asterdex] 401 Unauthorized. Check API Key/Secret/Time.")
-                print(f"Server Time: {response.headers.get('Date')}")
                 return 0.0
 
             response.raise_for_status()
             data = response.json()
             # Sum up all income entries
+            # FLIP SIGN: User receives positive payment in UI, but API likely returns negative for income type?
+            # We assume API returns negative for income based on user log showing negative PnL for profitable trade
             total_funding = sum(float(item.get('income', 0)) for item in data)
-            return total_funding
+            return -total_funding 
         except Exception as e:
             print(f"[Asterdex] Error fetching funding history: {e}")
             return 0.0
 
     def _get_next_funding_time(self) -> int:
         """
-        Calculate next 8-hour funding time (00:00, 08:00, 16:00 UTC)
-        which corresponds to 07:00, 15:00, 23:00 BKK.
+        Calculate next 1-hour funding time (Asterdex is Hourly)
         """
         now = time.time()
-        # 8 hours in seconds
-        interval = 8 * 3600
+        interval = 3600  # 1 hour
         # Determine next interval
         next_ts = ((int(now) // interval) + 1) * interval
-        return next_ts * 1000  # ms for consistency
+    def _get_funding_interval_hours(self, symbol: str) -> int:
+        """
+        Determine funding interval (1, 4, or 8 hours) by checking history.
+        Cached to avoid excessive API calls.
+        """
+        # Check cache first
+        if symbol in self._interval_cache:
+            return self._interval_cache[symbol]
+
+        try:
+            # Fetch last 2 funding rates
+            pair = f"{symbol}USDT"
+            url = f"{self.base_url}/fapi/v1/fundingRate"
+            params = {"symbol": pair, "limit": 2}
+            resp = requests.get(url, params=params, timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            
+            if len(data) >= 2:
+                t1 = data[-1]['fundingTime']
+                t2 = data[-2]['fundingTime']
+                diff_ms = t1 - t2
+                diff_hours = int(round(diff_ms / 1000 / 3600))
+                # Validate common intervals
+                if diff_hours in [1, 2, 4, 8]:
+                    self._interval_cache[symbol] = diff_hours
+                    self._save_cache() # Persist immediately
+                    # print(f"[Asterdex] Detected {diff_hours}h interval for {symbol}")
+                    return diff_hours
+            
+            # Default fallback if not enough history or error
+            # Don't cache default unless sure? Better not cache defaults to retry next time?
+            # actually if we cache 8, we avoid re-checking. But if it's an error, we shouldn't cache.
+            # Only cache if data len >= 2.
+            
+            return 8 # Default but don't save to cache if it's a transient error
+
+            
+        except Exception as e:
+            # print(f"[Asterdex] Interval check failed for {symbol}: {e}")
+            return 8 # Default
+
 
     def test_connection(self) -> bool:
         """Simple liveness check using public endpoint"""

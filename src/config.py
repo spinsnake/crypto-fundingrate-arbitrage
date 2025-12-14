@@ -17,7 +17,7 @@ MAX_BREAK_EVEN_ROUNDS = 2 # Max rounds (8h each) to wait for break-even. 1 = mus
 # Filter Settings
 ENABLE_VOLUME_FILTER = True
 ENABLE_DELIST_FILTER = True
-WATCHLIST = ["TNSR"] # Symbols to monitor regardless of profit (e.g. ["HEMI", "ETH"])
+WATCHLIST = [] # Symbols to monitor regardless of profit (e.g. ["HEMI", "ETH"])
 
 # Execution Settings
 ENABLE_TRADING = False # SAFETY: Start with False (Alert Mode)
