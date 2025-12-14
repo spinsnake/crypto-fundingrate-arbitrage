@@ -38,6 +38,13 @@ class ExchangeInterface(ABC):
         """
         pass
 
+    def get_funding_history(self, symbol: str, start_time: int, end_time: int) -> float:
+        """
+        Get total funding fee paid/received for a symbol in a time range (ms timestamps).
+        Returns net amount (positive = received, negative = paid).
+        """
+        pass
+
 class StrategyInterface(ABC):
     @abstractmethod
     def analyze(self, market_data: Dict[str, Dict[str, FundingRate]]) -> List[Signal]:

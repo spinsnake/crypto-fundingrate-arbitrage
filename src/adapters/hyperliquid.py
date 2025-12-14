@@ -98,6 +98,8 @@ class HyperliquidAdapter(ExchangeInterface):
         if not self._exchange:
             print(f"[Hyperliquid] Mock Order Placed: {order}")
             return {"status": "mock_success", "order_id": "mock_456"}
+        
+
 
         is_buy = order.side.upper() == "BUY"
         tif = {"limit": {"tif": "Gtc"}} if order.type.upper() == "LIMIT" else {"market": {}}
@@ -235,3 +237,52 @@ class HyperliquidAdapter(ExchangeInterface):
             except Exception as e:
                 print(f"[Hyperliquid] get_account_info failed: {e}")
         return {}
+
+    def get_funding_history(self, symbol: str, start_time: int, end_time: int) -> float:
+        if not self.wallet_address:
+            print("[Hyperliquid] No wallet address for funding history")
+            return 0.0
+
+        endpoint = "/info"
+        payload = {
+            "type": "userFunding",
+            "user": self.wallet_address,
+            "startTime": start_time
+        }
+        
+        try:
+            response = requests.post(f"{self.base_url}{endpoint}", json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            # print(f"[HL DEBUG] Funding raw data count: {len(data)}") # Debug
+            total_funding = 0.0
+            for i, item in enumerate(data):
+                # Expected item keys: 'coin', 'usdc', 'time'
+                # HL response structure might be nested
+                # Check for 'delta' key common in HL updates
+                delta = item.get('delta', {})
+                if delta:
+                    item_coin = delta.get('coin')
+                    amount = float(delta.get('usdc', 0) or delta.get('fundingPayment', 0)) # handle various formats
+                else:
+                    item_coin = item.get('coin')
+                    amount = float(item.get('usdc', 0))
+
+                ts = int(item.get('time', 0))
+                
+                if item_coin != symbol:
+                    continue
+                
+                ts = int(item.get('time', 0))
+                if ts < start_time or ts > end_time:
+                    continue
+                
+                # Use the amount extracted from delta/item above
+                total_funding += amount
+            
+            # print(f"[HL DEBUG] Total for {symbol}: {total_funding}")
+            return total_funding
+        except Exception as e:
+            print(f"[Hyperliquid] Error fetching funding history: {e}")
+            return 0.0

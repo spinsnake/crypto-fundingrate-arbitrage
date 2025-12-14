@@ -55,7 +55,7 @@ class AsterdexAdapter(ExchangeInterface):
                     source=self.get_name(),
                     timestamp=int(time.time() * 1000),
                     volume_24h=vol_map.get(symbol, 0.0),
-                    next_funding_time=int(item.get('nextFundingTime', 0)),
+                    next_funding_time=self._get_next_funding_time(),
                     is_active=self.is_symbol_active(base_symbol),
                     taker_fee=ASTERDEX_TAKER_FEE
                 )
@@ -238,6 +238,68 @@ class AsterdexAdapter(ExchangeInterface):
                 return True # Default to True to avoid blocking if API fails, but log error
         
         return symbol in self._active_symbols
+
+    def get_funding_history(self, symbol: str, start_time: int, end_time: int) -> float:
+        if not self.api_key or not self.api_secret:
+            return 0.0
+
+        symbol_pair = f"{symbol}USDT"
+        endpoint = "/fapi/v1/income"
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": symbol_pair,
+            "incomeType": "FUNDING_FEE",
+            "startTime": start_time,
+            "endTime": end_time,
+            "limit": 1000,
+            "timestamp": timestamp,
+            "recvWindow": 5000
+        }
+        
+        # Sign
+        query = urllib.parse.urlencode(list(OrderedDict(params).items()))
+        signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+        # params["signature"] = signature # Incorrect if order changes
+
+        # Construct final URL with signature to ensure order matches
+        final_query = f"{query}&signature={signature}"
+        
+        headers = {
+            "X-MBX-APIKEY": self.api_key,
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+
+        try:
+            # Send GET with manual query string to prevent re-ordering
+            response = requests.get(f"{self.base_url}{endpoint}?{final_query}", headers=headers, timeout=10)
+            # print(f"[Asterdex DEBUG] URL: {response.url}") # Debug
+            
+            # Handle 401 specifically
+            if response.status_code == 401:
+                print(f"[Asterdex] 401 Unauthorized. Check API Key/Secret/Time.")
+                print(f"Server Time: {response.headers.get('Date')}")
+                return 0.0
+
+            response.raise_for_status()
+            data = response.json()
+            # Sum up all income entries
+            total_funding = sum(float(item.get('income', 0)) for item in data)
+            return total_funding
+        except Exception as e:
+            print(f"[Asterdex] Error fetching funding history: {e}")
+            return 0.0
+
+    def _get_next_funding_time(self) -> int:
+        """
+        Calculate next 8-hour funding time (00:00, 08:00, 16:00 UTC)
+        which corresponds to 07:00, 15:00, 23:00 BKK.
+        """
+        now = time.time()
+        # 8 hours in seconds
+        interval = 8 * 3600
+        # Determine next interval
+        next_ts = ((int(now) // interval) + 1) * interval
+        return next_ts * 1000  # ms for consistency
 
     def test_connection(self) -> bool:
         """Simple liveness check using public endpoint"""

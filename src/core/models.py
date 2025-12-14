@@ -30,6 +30,8 @@ class Signal:
     break_even_rounds: int = 0
     next_aster_payout: int = 0  # Asterdex settlement time (every 8h)
     next_hl_payout: int = 0  # Hyperliquid settlement time (every 1h)
+    aster_rate: float = 0.0
+    hl_rate: float = 0.0
 
 @dataclass
 class Order:

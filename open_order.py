@@ -13,7 +13,7 @@ from src.adapters.asterdex import AsterdexAdapter  # noqa: E402
 from src.adapters.hyperliquid import HyperliquidAdapter  # noqa: E402
 from src.core.execution_manager import ExecutionManager  # noqa: E402
 
-SYMBOL = "MOODENG"
+SYMBOL = "TNSR"
 NOTIONAL = 560  # per leg in quote (USDT/USDC)
 DIRECTION = "LONG_HL_SHORT_ASTER"  # Options: "LONG_HL_SHORT_ASTER" or "LONG_ASTER_SHORT_HL"
 
@@ -40,9 +40,9 @@ def within_window_bkk(window_minutes: int = 30) -> tuple[bool, float, str]:
 
 def main():
     ok, mins, target_str = within_window_bkk()
-    if not ok:
-        print(f"[Open] Too early. Next payout {target_str} BKK in {mins:.1f} mins. Allowed window: last 30 mins before payout.")
-        return
+    # if not ok:
+    #     print(f"[Open] Too early. Next payout {target_str} BKK in {mins:.1f} mins. Allowed window: last 30 mins before payout.")
+    #     return
 
     aster = AsterdexAdapter()
     hyper = HyperliquidAdapter()

@@ -6,17 +6,19 @@ from src.adapters.hyperliquid import HyperliquidAdapter
 from src.strategies.funding_arb import FundingArbitrageStrategy
 from src.notification.telegram import TelegramNotifier
 from src.notification.discord import DiscordNotifier
-from src.config import POLL_INTERVAL, ENABLE_TRADING
+from src.config import POLL_INTERVAL, ENABLE_TRADING, WATCHLIST
+from src.core.execution_manager import ExecutionManager
 
 
 def main():
     print("--- Starting Crypto Arbitrage Bot (Phase 3) ---")
 
-    exchanges = [
-        AsterdexAdapter(),
-        HyperliquidAdapter(),
-    ]
+    aster = AsterdexAdapter()
+    hl = HyperliquidAdapter()
+    exchanges = [aster, hl]
+    
     strategy = FundingArbitrageStrategy()
+    execu = ExecutionManager()
     telegram_notifier = TelegramNotifier()
     discord_notifier = DiscordNotifier()
 
@@ -74,11 +76,23 @@ def main():
 
                     hold_hours = top_signal.break_even_rounds * 8
 
+                    # Determine Pay/Recv
+                    # HL Rate is already normalized to 8h in strategy/model
+                    aster_action = "RECV" if top_signal.aster_rate > 0 else "PAY" # Assuming Short Aster
+                    hl_action = "PAY" if top_signal.hl_rate > 0 else "RECV"       # Assuming Long HL
+                    
+                    if top_signal.direction == "LONG_ASTER_SHORT_HL":
+                         aster_action = "PAY" if top_signal.aster_rate > 0 else "RECV"
+                         hl_action = "RECV" if top_signal.hl_rate > 0 else "PAY"
+
                     msg = (
                         f"{icon} **Opportunity Found: {top_signal.symbol}**{warning_text}\n"
                         f"💰 Monthly Return (net): {top_signal.projected_monthly_return*100:.2f}%\n"
                         f"↔️ Spread (8h, net of fees): {top_signal.spread_net*100:.4f}%\n"
                         f"🛡️ Round Return (after fees, 1 round): {top_signal.round_return_net*100:.4f}%\n"
+                        f"📊 Rates (8h):\n"
+                        f"  • Asterdex: {top_signal.aster_rate*100:.4f}% ({aster_action})\n"
+                        f"  • Hyperliq: {top_signal.hl_rate*100:.4f}% ({hl_action})\n"
                         f"⏳ Min Hold: {top_signal.break_even_rounds} Rounds (~{hold_hours} Hours) to Break Even\n"
                         f"⏱️ Asterdex Payout: in {aster_mins_left} mins ({aster_bkk} BKK)\n"
                         f"⏱️ HL Payout: in {hl_mins_left} mins ({hl_bkk} BKK)\n"
@@ -88,6 +102,40 @@ def main():
                     print(msg)
                     telegram_notifier.send_alert(msg)
                     discord_notifier.send_alert(msg)
+
+                # --- NEW: Live PnL for Watchlist ---
+                for symbol in WATCHLIST:
+                    trade = execu.get_last_open_trade(symbol)
+                    if trade:
+                        try:
+                            # 1. Realized Funding
+                            start_time_str = trade['Timestamp']
+                            dt = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
+                            start_time = int(dt.timestamp() * 1000)
+                            now_ms = int(time.time() * 1000)
+                            
+                            # Determine exchanges from log
+                            ex_long_name = trade['Long_Exchange']
+                            ex_short_name = trade['Short_Exchange']
+                            
+                            # Get Adapters (simple lookup if names match)
+                            fund_aster = aster.get_funding_history(symbol, start_time, now_ms)
+                            fund_hl = hl.get_funding_history(symbol, start_time, now_ms)
+                            net_funding = fund_aster + fund_hl
+                            
+                            
+                            # Icon Logic
+                            net_icon = "💰" if net_funding >= 0 else "💸"
+                            aster_icon = "🟢" if fund_aster >= 0 else "🔴"
+                            hl_icon = "🟢" if fund_hl >= 0 else "🔴"
+
+                            print(f"\n[{symbol} LIVE STATUS]")
+                            print(f"   Realized Funding: {net_icon} {net_funding:+.4f} USDT")
+                            print(f"      Asterdex:    {aster_icon} {fund_aster:+.4f} USDT")
+                            print(f"      Hyperliquid: {hl_icon} {fund_hl:+.4f} USDT")
+                            print(f"   (Open since {start_time_str})\n")
+                        except Exception as e:
+                            print(f"[Live PnL] Error for {symbol}: {e}")
 
                     if ENABLE_TRADING:
                         print("[Execution] Auto-trading is enabled but not implemented yet.")

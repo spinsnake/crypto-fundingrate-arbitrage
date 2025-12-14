@@ -142,7 +142,9 @@ class FundingArbitrageStrategy(StrategyInterface):
                 warning=warning_msg,
                 break_even_rounds=break_even_rounds,
                 next_aster_payout=aster.next_funding_time,
-                next_hl_payout=hl.next_funding_time
+                next_hl_payout=hl.next_funding_time,
+                aster_rate=aster.rate,
+                hl_rate=hl.rate
             ))
             
         # Sort by profitability
