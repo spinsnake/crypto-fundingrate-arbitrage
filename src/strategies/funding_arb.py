@@ -4,9 +4,9 @@ import math
 from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
 from ..config import (
-    MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_USDT, ESTIMATED_FEE_PER_ROTATION,
-    ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST, SLIPPAGE_BPS, DEBUG_FILTER_LOG,
-    MAX_BREAK_EVEN_ROUNDS
+    MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_ASTER_USDT, MIN_VOLUME_HL_USDT,
+    ESTIMATED_FEE_PER_ROTATION, ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST,
+    SLIPPAGE_BPS, DEBUG_FILTER_LOG, MAX_BREAK_EVEN_ROUNDS
 )
 
 class FundingArbitrageStrategy(StrategyInterface):
@@ -45,8 +45,11 @@ class FundingArbitrageStrategy(StrategyInterface):
 
             # Volume Check
             if ENABLE_VOLUME_FILTER and not is_watched:
-                if aster.volume_24h < MIN_VOLUME_USDT or hl.volume_24h < MIN_VOLUME_USDT:
-                    log_skip(symbol, f"low volume: aster={aster.volume_24h:.0f} hl={hl.volume_24h:.0f} (min {MIN_VOLUME_USDT})")
+                if aster.volume_24h < MIN_VOLUME_ASTER_USDT or hl.volume_24h < MIN_VOLUME_HL_USDT:
+                    log_skip(
+                        symbol,
+                        f"low volume: aster={aster.volume_24h:.0f}/{MIN_VOLUME_ASTER_USDT} hl={hl.volume_24h:.0f}/{MIN_VOLUME_HL_USDT}"
+                    )
                     continue
                 
             # Calculate Spread

@@ -12,9 +12,12 @@ load_dotenv()
 from src.adapters.asterdex import AsterdexAdapter  # noqa: E402
 from src.adapters.hyperliquid import HyperliquidAdapter  # noqa: E402
 from src.core.execution_manager import ExecutionManager  # noqa: E402
+from src.config import DEFAULT_LEVERAGE  # noqa: E402
 
-SYMBOL = "TNSR"
-NOTIONAL = 560  # per leg in quote (USDT/USDC)
+SYMBOL = "HEMI"
+# Fallback notional if balances not available
+NOTIONAL_FALLBACK = 560  # per leg in quote (USDT/USDC)
+SAFETY_BUFFER = 0.9       # use 90% of min equity to leave margin buffer
 DIRECTION = "LONG_HL_SHORT_ASTER"  # Options: "LONG_HL_SHORT_ASTER" or "LONG_ASTER_SHORT_HL"
 
 
@@ -60,10 +63,18 @@ def main():
         long_name = "Asterdex"
         short_name = "Hyperliquid"
 
-    print(f"[Open] symbol={SYMBOL} notional={NOTIONAL} direction={DIRECTION}")
+    # Auto-calc notional per leg from balances (use min equity across exchanges)
+    bal_aster = aster.get_balance()
+    bal_hl = hyper.get_balance()
+    notional = NOTIONAL_FALLBACK
+    if bal_aster > 0 and bal_hl > 0:
+        base_capital = min(bal_aster, bal_hl) * SAFETY_BUFFER
+        notional = base_capital * DEFAULT_LEVERAGE
+    print(f"[Open] symbol={SYMBOL} notional={notional:.2f} direction={DIRECTION}")
+    print(f"[Open] Balances -> Asterdex: {bal_aster:.4f}, Hyperliquid: {bal_hl:.4f} (leverage {DEFAULT_LEVERAGE}x, buffer {SAFETY_BUFFER*100:.0f}%)")
     print(f"[Open] Long on {long_name}, Short on {short_name}")
     print(f"[Open] Next payout {target_str} BKK in {mins:.1f} mins")
-    res = execu.open_spread(SYMBOL, NOTIONAL, exchange_long=exchange_long, exchange_short=exchange_short)
+    res = execu.open_spread(SYMBOL, notional, exchange_long=exchange_long, exchange_short=exchange_short)
     # Summarize per exchange
     long_res = res.get("long", {})
     short_res = res.get("short", {})

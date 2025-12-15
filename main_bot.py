@@ -5,7 +5,7 @@ from src.adapters.hyperliquid import HyperliquidAdapter
 from src.strategies.funding_arb import FundingArbitrageStrategy
 from src.notification.telegram import TelegramNotifier
 from src.notification.discord import DiscordNotifier
-from src.config import POLL_INTERVAL, ENABLE_TRADING, WATCHLIST
+from src.config import POLL_INTERVAL, ENABLE_TRADING, WATCHLIST, AUTO_CLOSE_RET_PCT
 from src.core.execution_manager import ExecutionManager
 from src.utils.time_helper import TimeHelper
 
@@ -51,39 +51,34 @@ def main():
                 if final_signals:
                     top_signal = final_signals[0]
                     
-                    # Asterdex payout
+                    # Payout timing
                     aster_mins_left = TimeHelper.ms_to_mins_remaining(top_signal.next_aster_payout)
                     aster_bkk = TimeHelper.ms_to_bkk_str(top_signal.next_aster_payout)
-                    
-                    # HL payout
                     hl_mins_left = TimeHelper.ms_to_mins_remaining(top_signal.next_hl_payout)
                     hl_bkk = TimeHelper.ms_to_bkk_str(top_signal.next_hl_payout)
 
-                    icon = "🚀" if top_signal.is_watchlist else "✨"
-                    warning_text = f"\n{top_signal.warning}" if top_signal.warning else ""
-
+                    icon = "[WATCH]" if top_signal.is_watchlist else "[SIG]"
+                    warning_text = f" | {top_signal.warning}" if top_signal.warning else ""
                     hold_hours = top_signal.break_even_rounds * 8
 
                     # Determine Pay/Recv
-                    # HL Rate is already normalized to 8h in strategy/model
-                    aster_action = "RECV" if top_signal.aster_rate > 0 else "PAY" # Assuming Short Aster
-                    hl_action = "PAY" if top_signal.hl_rate > 0 else "RECV"       # Assuming Long HL
-                    
+                    aster_action = "RECV" if top_signal.aster_rate > 0 else "PAY"  # assuming short Aster
+                    hl_action = "PAY" if top_signal.hl_rate > 0 else "RECV"        # assuming long HL
                     if top_signal.direction == "LONG_ASTER_SHORT_HL":
-                         aster_action = "PAY" if top_signal.aster_rate > 0 else "RECV"
-                         hl_action = "RECV" if top_signal.hl_rate > 0 else "PAY"
+                        aster_action = "PAY" if top_signal.aster_rate > 0 else "RECV"
+                        hl_action = "RECV" if top_signal.hl_rate > 0 else "PAY"
 
                     msg = (
-                        f"{icon} **Opportunity Found: {top_signal.symbol}**{warning_text}\n"
-                        f"💰 Monthly Return (net): {top_signal.projected_monthly_return*100:.2f}%\n"
-                        f"↔️ Spread (8h, net of fees): {top_signal.spread_net*100:.4f}%\n"
-                        f"🛡️ Round Return (after fees, 1 round): {top_signal.round_return_net*100:.4f}%\n"
-                        f"📊 Rates (8h):\n"
-                        f"  • Asterdex: {top_signal.aster_rate*100:.4f}% ({aster_action})\n"
-                        f"  • Hyperliq: {top_signal.hl_rate*100:.4f}% ({hl_action})\n"
-                        f"⏳ Min Hold: {top_signal.break_even_rounds} Rounds (~{hold_hours} Hours) to Break Even\n"
-                        f"⏱️ Asterdex Payout: in {aster_mins_left} mins ({aster_bkk} BKK)\n"
-                        f"⏱️ HL Payout: in {hl_mins_left} mins ({hl_bkk} BKK)\n"
+                        f"{icon} {top_signal.symbol}{warning_text}\n"
+                        f"Monthly Return (net): {top_signal.projected_monthly_return*100:.2f}%\n"
+                        f"Spread 8h (net of fees): {top_signal.spread_net*100:.4f}%\n"
+                        f"Round Return (after fees): {top_signal.round_return_net*100:.4f}%\n"
+                        f"Rates (8h):\n"
+                        f"  Asterdex: {top_signal.aster_rate*100:.4f}% ({aster_action})\n"
+                        f"  Hyperliq: {top_signal.hl_rate*100:.4f}% ({hl_action})\n"
+                        f"Min Hold: {top_signal.break_even_rounds} rounds (~{hold_hours}h) to break even\n"
+                        f"Asterdex Payout: in {aster_mins_left} mins ({aster_bkk} BKK)\n"
+                        f"HL Payout: in {hl_mins_left} mins ({hl_bkk} BKK)\n"
                         f"action: {top_signal.direction}\n"
                         f"(Long {top_signal.exchange_long} / Short {top_signal.exchange_short})"
                     )
@@ -91,43 +86,215 @@ def main():
                     telegram_notifier.send_alert(msg)
                     discord_notifier.send_alert(msg)
 
-                # --- NEW: Live PnL for Watchlist ---
+                # --- Live PnL for Watchlist ---
+                hl_positions = {p["symbol"]: p for p in hl.get_open_positions()}
+                aster_positions = {p["symbol"]: p for p in aster.get_open_positions()}
                 for symbol in WATCHLIST:
                     trade = execu.get_last_open_trade(symbol)
-                    if trade:
+                    if not trade:
+                        continue
+                    try:
+                        # 1) Realized funding
+                        start_time_str = trade["Timestamp"]
+                        start_time = TimeHelper.str_to_ms(start_time_str)
+                        now_ms = int(time.time() * 1000)
+
+                        ex_long_name = trade["Long_Exchange"]
+                        ex_short_name = trade["Short_Exchange"]
+
+                        fund_aster = aster.get_funding_history(symbol, start_time, now_ms)
+                        fund_hl = hl.get_funding_history(symbol, start_time, now_ms)
+                        net_funding = fund_aster + fund_hl
+
+                        # 2) Fees (actual if possible)
+                        fee_aster = 0.0
+                        fee_hl = 0.0
+                        fee_notes = []
+                        if ex_long_name == "Asterdex" or ex_short_name == "Asterdex":
+                            fee_aster = aster.get_trade_fees(symbol, start_time, now_ms)
+                            if fee_aster:
+                                fee_notes.append(f"Asterdex fees: {fee_aster:.4f}")
+                        if ex_long_name == "Hyperliquid" or ex_short_name == "Hyperliquid":
+                            fee_hl = hl.get_trade_fees(symbol, start_time, now_ms)
+                            if fee_hl:
+                                fee_notes.append(f"Hyperliquid fees: {fee_hl:.4f}")
+
+                        open_fee_logged = float(trade.get("Est_Fee_Cost", 0) or 0)  # legacy estimate from log
+                        # fallback estimate (open + close both legs) if no actual fee found
+                        from src.config import ASTERDEX_TAKER_FEE, HYPERLIQUID_TAKER_FEE
+                        open_notional = float(trade.get("Est_Total_Notional", 0) or 0)
+                        per_round_fee_rate = (ASTERDEX_TAKER_FEE + HYPERLIQUID_TAKER_FEE)
+                        est_open_fee = open_notional * per_round_fee_rate
+
+                        total_fees_paid = fee_aster + fee_hl
+                        if total_fees_paid == 0:
+                            total_fees_paid = est_open_fee  # nothing recorded yet, use open est.
+                        # Estimate close fee = same as open (paid or est) per request
+                        close_fee_est = total_fees_paid if total_fees_paid > 0 else est_open_fee
+                        total_fees = total_fees_paid + close_fee_est  # include estimated close
+
+                        # 3) Price PnL (unrealized)
+                        price_pnl = 0.0
+                        used_api = False
+                        pnl_breakdown = ""
+                        sym_data = market_data.get(symbol, {})
+                        rate_long = sym_data.get(ex_long_name)
+                        rate_short = sym_data.get(ex_short_name)
+
+                        curr_px_long = 0.0
+                        curr_px_short = 0.0
+                        if rate_long and rate_short:
+                            curr_px_long = rate_long.mark_price
+                            curr_px_short = rate_short.mark_price
+
+                            entry_px_long = float(trade["Long_Price"])
+                            qty_long = float(trade["Long_Qty"])
+                            entry_px_short = float(trade["Short_Price"])
+                            qty_short = float(trade["Short_Qty"])
+
+                            hl_pos = hl_positions.get(symbol)
+                            ast_pos = aster_positions.get(symbol)
+
+                            # Override with live Asterdex positions if present
+                            if ast_pos:
+                                if ex_long_name == "Asterdex":
+                                    entry_px_long = float(ast_pos.get("entry_price") or entry_px_long)
+                                    qty_long = float(ast_pos.get("quantity") or qty_long)
+                                    if ast_pos.get("mark_price"):
+                                        curr_px_long = float(ast_pos["mark_price"])
+                                if ex_short_name == "Asterdex":
+                                    entry_px_short = float(ast_pos.get("entry_price") or entry_px_short)
+                                    qty_short = float(ast_pos.get("quantity") or qty_short)
+                                    if ast_pos.get("mark_price"):
+                                        curr_px_short = float(ast_pos["mark_price"])
+
+                            if hl_pos:
+                                if ex_long_name == "Hyperliquid":
+                                    entry_px_long = float(hl_pos.get("entry_price") or entry_px_long)
+                                    qty_long = float(hl_pos.get("quantity") or qty_long)
+                                    if hl_pos.get("mark_price"):
+                                        curr_px_long = float(hl_pos["mark_price"])
+                                if ex_short_name == "Hyperliquid":
+                                    entry_px_short = float(hl_pos.get("entry_price") or entry_px_short)
+                                    qty_short = float(hl_pos.get("quantity") or qty_short)
+                                    if hl_pos.get("mark_price"):
+                                        curr_px_short = float(hl_pos["mark_price"])
+
+                            # Prefer API unrealized PnL when available
+                            price_pnl_api = 0.0
+                            used_api = False
+                            if hl_pos and hl_pos.get("unrealized_pnl") is not None:
+                                price_pnl_api += float(hl_pos.get("unrealized_pnl", 0.0))
+                                used_api = True
+                            if ast_pos and ast_pos.get("unrealized_pnl") is not None:
+                                price_pnl_api += float(ast_pos.get("unrealized_pnl", 0.0))
+                                used_api = True
+
+                            if used_api:
+                                price_pnl = price_pnl_api
+                            else:
+                                pnl_long = (curr_px_long - entry_px_long) * qty_long
+                                pnl_short = (entry_px_short - curr_px_short) * qty_short
+                                price_pnl = pnl_long + pnl_short
+
+                            pnl_breakdown = (
+                                f"      Long ({ex_long_name}): {(curr_px_long - entry_px_long)*qty_long:+.4f} "
+                                f"(Px: {entry_px_long:.4f}->{curr_px_long:.4f})\n"
+                                f"      Short ({ex_short_name}): {(entry_px_short - curr_px_short)*qty_short:+.4f} "
+                                f"(Px: {entry_px_short:.4f}->{curr_px_short:.4f})"
+                            )
+                        else:
+                            pnl_breakdown = "      (Waiting for market data...)"
+
+                        # 4) Est. close PnL with slippage (book-based)
+                        price_pnl_slip = price_pnl
+                        close_detail = ""
                         try:
-                            # 1. Realized Funding
-                            start_time_str = trade['Timestamp']
-                            dt = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-                            start_time = int(dt.timestamp() * 1000)
-                            now_ms = int(time.time() * 1000)
-                            
-                            # Determine exchanges from log
-                            ex_long_name = trade['Long_Exchange']
-                            ex_short_name = trade['Short_Exchange']
-                            
-                            # Get Adapters (simple lookup if names match)
-                            fund_aster = aster.get_funding_history(symbol, start_time, now_ms)
-                            fund_hl = hl.get_funding_history(symbol, start_time, now_ms)
-                            net_funding = fund_aster + fund_hl
-                            
-                            
-                            # Icon Logic
-                            net_icon = "💰" if net_funding >= 0 else "💸"
-                            aster_icon = "🟢" if fund_aster >= 0 else "🔴"
-                            hl_icon = "🟢" if fund_hl >= 0 else "🔴"
-
-                            print(f"\n[{symbol} LIVE STATUS]")
-                            print(f"   Realized Funding: {net_icon} {net_funding:+.4f} USDT")
-                            print(f"      Asterdex:    {aster_icon} {fund_aster:+.4f} USDT")
-                            print(f"      Hyperliquid: {hl_icon} {fund_hl:+.4f} USDT")
-                            print(f"   (Open since {start_time_str})\n")
+                            ex_map = {"Asterdex": aster, "Hyperliquid": hl}
+                            ex_long_obj = ex_map.get(ex_long_name)
+                            ex_short_obj = ex_map.get(ex_short_name)
+                            if ex_long_obj and ex_short_obj:
+                                book_long = ex_long_obj.get_top_of_book(symbol)
+                                book_short = ex_short_obj.get_top_of_book(symbol)
+                                close_px_long = execu._price_with_slippage(book_long.get("bid", 0.0), "SELL")
+                                close_px_short = execu._price_with_slippage(book_short.get("ask", 0.0), "BUY")
+                                if close_px_long > 0 and close_px_short > 0:
+                                    pnl_close_long = (close_px_long - entry_px_long) * qty_long
+                                    pnl_close_short = (entry_px_short - close_px_short) * qty_short
+                                    price_pnl_slip = pnl_close_long + pnl_close_short
+                                    close_detail = (
+                                        f"      Est close Long @ {close_px_long:.6f} -> {pnl_close_long:+.4f}\n"
+                                        f"      Est close Short @ {close_px_short:.6f} -> {pnl_close_short:+.4f}"
+                                    )
                         except Exception as e:
-                            print(f"[Live PnL] Error for {symbol}: {e}")
+                            close_detail = f"      (Close est error: {e})"
 
-                    if ENABLE_TRADING:
-                        print("[Execution] Auto-trading is enabled but not implemented yet.")
-                        # execution_manager.execute(top_signal)
+                        # 5) Net PnL (with slippage-based close est)
+                        net_pnl = net_funding + price_pnl_slip - total_fees
+
+                        pnl_source = "API" if used_api else "calc"
+
+                        # 6) Equity / Return %
+                        bal_aster = aster.get_balance()
+                        bal_hl = hl.get_balance()
+                        total_equity = (bal_aster or 0) + (bal_hl or 0)
+                        equity_source = "API"
+                        if total_equity <= 0:
+                            total_equity = open_notional or 1.0  # avoid zero-div
+                            equity_source = "EST"
+                        ret_pct = (net_pnl / total_equity) * 100 if total_equity else 0.0
+
+                        # 7) Auto-close based on return %
+                        auto_close_hit = ENABLE_TRADING and AUTO_CLOSE_RET_PCT > 0 and ret_pct >= AUTO_CLOSE_RET_PCT
+
+                        print(f"\n[= LIVE =] {symbol}")
+                        print(f"   [FUND] {net_funding:+.4f} USDT "
+                              f"(Asterdex {fund_aster:+.4f}, Hyperliquid {fund_hl:+.4f})")
+                        print(f"   [PNL ] {price_pnl:+.4f} USDT ({pnl_source})")
+                        print(pnl_breakdown)
+                        print(f"   [SLIP] {price_pnl_slip:+.4f} USDT (est close w/ slippage)")
+                        if close_detail:
+                            print(close_detail)
+                        # Fee display: paid + estimated close
+                        fee_display_notes = []
+                        if fee_notes:
+                            fee_display_notes.append("; ".join(fee_notes))
+                        fee_display_notes.append(f"Close est.: {close_fee_est:.4f}")
+                        print(f"   [FEE ] -{total_fees:.4f} USDT"
+                              + f" ({' | '.join(fee_display_notes)}; EST)")
+                        print(f"   [BAL ] {total_equity:.4f} USDT "
+                              f"(Asterdex {bal_aster:.4f}, Hyperliquid {bal_hl:.4f}, {equity_source})")
+                        ret_icon = "\U0001F7E2" if ret_pct >= 0 else "\U0001F534"
+                        print(f"   [RET ] {ret_icon} {ret_pct:+.4f}% of equity")
+                        print(f"   -----------------------------------------")
+                        net_icon = "\U0001F7E2" if net_pnl >= 0 else "\U0001F534"
+                        print(f"   [NET ] {net_icon} {net_pnl:+.4f} USDT")
+                        if auto_close_hit:
+                            try:
+                                ex_map = {"Asterdex": aster, "Hyperliquid": hl}
+                                ex_long_obj = ex_map.get(ex_long_name)
+                                ex_short_obj = ex_map.get(ex_short_name)
+                                if ex_long_obj and ex_short_obj:
+                                    print(f"[Auto-Close] Ret {ret_pct:.4f}% >= {AUTO_CLOSE_RET_PCT:.4f}% -> closing spread...")
+                                    res_close = execu.close_spread(
+                                        symbol,
+                                        qty_long=float(trade.get("Long_Qty", 0) or 0),
+                                        qty_short=float(trade.get("Short_Qty", 0) or 0),
+                                        exchange_long=ex_long_obj,
+                                        exchange_short=ex_short_obj,
+                                    )
+                                    print(f"[Auto-Close] Done: {res_close}")
+                                else:
+                                    print(f"[Auto-Close] Missing exchange objects for {symbol} (long={ex_long_name}, short={ex_short_name})")
+                            except Exception as e:
+                                print(f"[Auto-Close] Error: {e}")
+                        print(f"   (Open since {start_time_str})\n")
+                    except Exception as e:
+                        print(f"[Live PnL] Error for {symbol}: {e}")
+
+                if ENABLE_TRADING:
+                    print("[Execution] Auto-trading is enabled but not implemented yet.")
+                    # execution_manager.execute(top_signal)
 
             print(f"[Sleep] Waiting {POLL_INTERVAL}s...")
             time.sleep(POLL_INTERVAL)

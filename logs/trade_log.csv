@@ -1,1 +1,3 @@
 Timestamp,Symbol,Action,Long_Exchange,Long_Price,Long_Qty,Long_Status,Short_Exchange,Short_Price,Short_Qty,Short_Status,Est_Total_Notional,Est_Fee_Cost
+2025-12-15 06:49:48,HEMI,OPEN,Hyperliquid,0.014049,39860.369127,ok,Asterdex,0.013999,40002.943074,NEW,1120.00,1.1200
+2025-12-15 12:29:04,HEMI,CLOSE,Hyperliquid,0.014334,39860.369127,ok,Asterdex,0.014392,40002.943074,NEW,1147.08,1.1471

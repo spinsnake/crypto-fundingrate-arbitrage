@@ -128,28 +128,76 @@ class HyperliquidAdapter(ExchangeInterface):
             return {"status": "error", "error": str(e)}
 
     def get_open_positions(self) -> List[Dict[str, Any]]:
-        if not self._info or not self.wallet_address:
-            print("[Hyperliquid] get_open_positions using mock (empty)")
+        if not self.wallet_address:
+            print("[Hyperliquid] get_open_positions using mock (no wallet)")
             return []
-        try:
-            state = self._info.user_state(self.wallet_address)
-            positions = []
+
+        def _to_float(val) -> float:
+            try:
+                return float(val)
+            except Exception:
+                return 0.0
+
+        def _parse_positions(state) -> List[Dict[str, Any]]:
+            positions: List[Dict[str, Any]] = []
             for pos in state.get("assetPositions", []):
                 p = pos.get("position", {}) or {}
-                # Coin field can live under position or top-level depending on API version
                 coin = p.get("coin") or pos.get("coin") or pos.get("asset")
                 szi = p.get("szi", 0) or pos.get("szi", 0)
-                try:
-                    sz = float(szi)
-                except Exception:
-                    sz = 0.0
+                sz = _to_float(szi)
                 if not coin or sz == 0:
                     continue
                 side = "LONG" if sz > 0 else "SHORT"
-                positions.append({"symbol": coin, "side": side, "quantity": abs(sz)})
+                entry_px = _to_float(p.get("entryPx") or pos.get("entryPx"))
+
+                mark_px = _to_float(p.get("markPx") or pos.get("markPx"))
+                if mark_px == 0.0:
+                    pos_val = _to_float(p.get("positionValue") or pos.get("positionValue"))
+                    if pos_val and abs(sz) > 0:
+                        mark_px = pos_val / abs(sz)
+
+                unrealized_pnl = _to_float(
+                    p.get("unrealizedPnl")
+                    or pos.get("unrealizedPnl")
+                    or p.get("unrealizedPnlUsd")
+                    or pos.get("unrealizedPnlUsd")
+                )
+                funding_since_open = _to_float(
+                    (p.get("cumFunding") or {}).get("sinceOpen") or (pos.get("cumFunding") or {}).get("sinceOpen")
+                )
+
+                positions.append(
+                    {
+                        "symbol": coin,
+                        "side": side,
+                        "quantity": abs(sz),
+                        "entry_price": entry_px,
+                        "mark_price": mark_px,
+                        "unrealized_pnl": unrealized_pnl,
+                        "funding_since_open": funding_since_open,
+                    }
+                )
             return positions
+
+        # Try SDK first
+        if self._info:
+            try:
+                state = self._info.user_state(self.wallet_address)
+                return _parse_positions(state)
+            except Exception as e:
+                print(f"[Hyperliquid] get_open_positions SDK failed: {e}")
+
+        # Fallback HTTP
+        try:
+            payload = {"type": "clearinghouseState", "user": self.wallet_address}
+            resp = requests.post(f"{self.base_url}/info", json=payload, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            # Response may be list [state]; accept dict or first element
+            state = data[0] if isinstance(data, list) else data
+            return _parse_positions(state)
         except Exception as e:
-            print(f"[Hyperliquid] get_open_positions failed: {e}")
+            print(f"[Hyperliquid] get_open_positions HTTP failed: {e}")
             return []
 
     def _load_meta(self):
@@ -285,4 +333,41 @@ class HyperliquidAdapter(ExchangeInterface):
             return total_funding
         except Exception as e:
             print(f"[Hyperliquid] Error fetching funding history: {e}")
+            return 0.0
+
+    def get_trade_fees(self, symbol: str, start_time: int, end_time: int) -> float:
+        """
+        Sum trade fees from userFills between start_time and end_time (ms). Returns positive fee cost.
+        """
+        if not self.wallet_address:
+            return 0.0
+
+        endpoint = "/info"
+        payload = {"type": "userFills", "user": self.wallet_address, "startTime": start_time}
+        try:
+            response = requests.post(f"{self.base_url}{endpoint}", json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            total_fee = 0.0
+            for item in data:
+                try:
+                    ts = int(item.get("time", 0))
+                    if ts < start_time or ts > end_time:
+                        continue
+                    coin = item.get("coin") or (item.get("delta", {}) or {}).get("coin")
+                    if coin != symbol:
+                        continue
+                    fee_val = item.get("fee")
+                    if fee_val is None:
+                        fee_val = item.get("feePaid") or item.get("fee_paid")
+                    if fee_val is None:
+                        fee_val = (item.get("delta", {}) or {}).get("fee")
+                    if fee_val is None:
+                        continue
+                    total_fee += abs(float(fee_val))
+                except Exception:
+                    continue
+            return total_fee
+        except Exception as e:
+            print(f"[Hyperliquid] Error fetching trade fees: {e}")
             return 0.0

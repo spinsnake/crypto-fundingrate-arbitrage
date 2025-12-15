@@ -102,8 +102,33 @@ class AsterdexAdapter(ExchangeInterface):
 
 
     def get_balance(self) -> float:
-        # Placeholder: would require signed request to account endpoint
-        return 0.0
+        """
+        Best-effort fetch USDT balance via signed /fapi/v2/balance (Binance-style).
+        Returns 0.0 on error.
+        """
+        if not self.api_key or not self.api_secret:
+            print("[Asterdex] get_balance missing api key/secret, returning 0")
+            return 0.0
+
+        endpoint = "/fapi/v2/balance"
+        timestamp = int(time.time() * 1000)
+        params = {"timestamp": timestamp, "recvWindow": 5000}
+        query = urllib.parse.urlencode(params)
+        signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+        headers = {"X-MBX-APIKEY": self.api_key}
+        try:
+            resp = requests.get(f"{self.base_url}{endpoint}", params={**params, "signature": signature}, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            # Expect list of balances; pick USDT
+            if isinstance(data, list):
+                for item in data:
+                    if item.get("asset") == "USDT":
+                        return float(item.get("balance", 0) or 0)
+            return 0.0
+        except Exception as e:
+            print(f"[Asterdex] get_balance failed: {e}")
+            return 0.0
 
     def place_order(self, order: Order) -> Dict:
         """
@@ -177,7 +202,19 @@ class AsterdexAdapter(ExchangeInterface):
                     continue
                 base = sym[:-4]
                 side = "LONG" if amt > 0 else "SHORT"
-                positions.append({"symbol": base, "side": side, "quantity": abs(amt)})
+                entry_price = float(p.get("entryPrice", 0) or 0)
+                mark_price = float(p.get("markPrice", 0) or 0)
+                unrealized = float(p.get("unRealizedProfit", 0) or 0)
+                positions.append(
+                    {
+                        "symbol": base,
+                        "side": side,
+                        "quantity": abs(amt),
+                        "entry_price": entry_price,
+                        "mark_price": mark_price,
+                        "unrealized_pnl": unrealized,
+                    }
+                )
             return positions
         except Exception as e:
             print(f"[Asterdex] get_open_positions failed: {e}")
@@ -317,12 +354,51 @@ class AsterdexAdapter(ExchangeInterface):
             response.raise_for_status()
             data = response.json()
             # Sum up all income entries
-            # FLIP SIGN: User receives positive payment in UI, but API likely returns negative for income type?
-            # We assume API returns negative for income based on user log showing negative PnL for profitable trade
+            # Sum up all income entries
+            # No sign flip: API returns actual realized PnL (Negative = Cost, Positive = Income)
             total_funding = sum(float(item.get('income', 0)) for item in data)
-            return -total_funding 
+            return total_funding 
         except Exception as e:
             print(f"[Asterdex] Error fetching funding history: {e}")
+            return 0.0
+
+    def get_trade_fees(self, symbol: str, start_time: int, end_time: int) -> float:
+        """
+        Sum actual commissions from userTrades endpoint between start_time and end_time.
+        Returns positive fee cost in quote currency.
+        """
+        if not self.api_key or not self.api_secret:
+            return 0.0
+
+        symbol_pair = f"{symbol}USDT"
+        endpoint = "/fapi/v1/userTrades"
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": symbol_pair,
+            "startTime": start_time,
+            "endTime": end_time,
+            "timestamp": timestamp,
+            "recvWindow": 5000,
+            "limit": 1000,
+        }
+
+        query = urllib.parse.urlencode(list(OrderedDict(params).items()))
+        signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+
+        headers = {"X-MBX-APIKEY": self.api_key}
+        try:
+            resp = requests.get(f"{self.base_url}{endpoint}", params={**params, "signature": signature}, headers=headers, timeout=10)
+            resp.raise_for_status()
+            trades = resp.json()
+            total_fee = 0.0
+            for t in trades:
+                try:
+                    total_fee += float(t.get("commission", 0) or 0)
+                except Exception:
+                    continue
+            return total_fee
+        except Exception as e:
+            print(f"[Asterdex] Error fetching trade fees: {e}")
             return 0.0
 
     def _get_next_funding_time(self) -> int:

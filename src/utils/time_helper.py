@@ -24,3 +24,11 @@ class TimeHelper:
         now_ms = int(time.time() * 1000)
         diff_ms = target_ms - now_ms
         return max(0, int(diff_ms / 60000))
+
+    @staticmethod
+    def str_to_ms(date_str, fmt="%Y-%m-%d %H:%M:%S"):
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            return int(dt.timestamp() * 1000)
+        except:
+            return 0
