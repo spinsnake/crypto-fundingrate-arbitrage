@@ -30,11 +30,12 @@ ENABLE_TRADING = True # SAFETY: Start with False (Alert Mode)
 AUTO_CLOSE_RET_PCT = 20  # Auto-close if portfolio return >= this percent (0 = disabled)
 AUTO_CLOSE_SIDE_DD_PCT = 10  # Auto-close if any single leg drawdown <= -this percent
 POLL_INTERVAL = 60 # Check every 60 seconds
+DISCORD_ALERT_INTERVAL = 300  # seconds between Discord alerts (throttled); scan still runs every POLL_INTERVAL
 
 # Notification Settings
 TELEGRAM_BOT_TOKEN = "" # User to fill
 TELEGRAM_CHAT_ID = ""   # User to fill
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1446766608264593519/gDLfrmOsdGmfQLRjihkQjkWk0ySS7jkKcaytdaxOa64wZBdAEnoFXUtEfCxSu_OQHM0Q"
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1450348767164502058/JBmAhwoHfTilBfyt-FYD2YpJJpioxJNaDV7Bdde6idS31DQwD_ee6pt9hZhYrqQVq3bZ"
 
 # Debugging
 DEBUG_FILTER_LOG = False  # Set True to print why symbols are filtered out (volume, inactive, net<=0, etc.)

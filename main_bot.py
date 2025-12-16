@@ -12,6 +12,7 @@ from src.config import (
     AUTO_CLOSE_RET_PCT,
     AUTO_CLOSE_SIDE_DD_PCT,
     REBALANCE_FIXED_COST_USDC,
+    DISCORD_ALERT_INTERVAL,
 )
 from src.core.execution_manager import ExecutionManager
 from src.utils.time_helper import TimeHelper
@@ -31,6 +32,7 @@ def main():
 
     print(f"Loaded {len(exchanges)} exchanges: {[e.get_name() for e in exchanges]}")
     print(f"Mode: {'AUTO TRADING' if ENABLE_TRADING else 'ALERT ONLY'}")
+    last_discord_alert_ts = 0  # epoch seconds
 
     while True:
         try:
@@ -97,7 +99,13 @@ def main():
                     )
                     print(msg)
                     telegram_notifier.send_alert(msg)
-                    discord_notifier.send_alert(msg)
+                    now_sec = time.time()
+                    if now_sec - last_discord_alert_ts >= DISCORD_ALERT_INTERVAL:
+                        discord_notifier.send_alert(msg)
+                        last_discord_alert_ts = now_sec
+                    else:
+                        wait_sec = int(DISCORD_ALERT_INTERVAL - (now_sec - last_discord_alert_ts))
+                        print(f"[Discord] Skipped (cooldown {wait_sec}s remaining)")
 
                 # --- Live PnL for Watchlist ---
                 hl_positions = {p["symbol"]: p for p in hl.get_open_positions()}
