@@ -401,6 +401,59 @@ class AsterdexAdapter(ExchangeInterface):
             print(f"[Asterdex] Error fetching trade fees: {e}")
             return 0.0
 
+    def get_fill_vwap(self, symbol: str, start_time: int, end_time: int) -> Dict[str, float]:
+        """
+        Return VWAP buy/sell prices and total filled qty for the window using userTrades.
+        """
+        summary = {"buy_qty": 0.0, "buy_vwap": 0.0, "sell_qty": 0.0, "sell_vwap": 0.0}
+        if not self.api_key or not self.api_secret:
+            return summary
+
+        symbol_pair = f"{symbol}USDT"
+        endpoint = "/fapi/v1/userTrades"
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": symbol_pair,
+            "startTime": start_time,
+            "endTime": end_time,
+            "timestamp": timestamp,
+            "recvWindow": 5000,
+            "limit": 1000,
+        }
+
+        query = urllib.parse.urlencode(list(OrderedDict(params).items()))
+        signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+
+        headers = {"X-MBX-APIKEY": self.api_key}
+        try:
+            resp = requests.get(f"{self.base_url}{endpoint}", params={**params, "signature": signature}, headers=headers, timeout=10)
+            resp.raise_for_status()
+            trades = resp.json()
+            buy_notional = 0.0
+            sell_notional = 0.0
+            for t in trades:
+                try:
+                    qty = float(t.get("qty", 0) or 0)
+                    px = float(t.get("price", 0) or 0)
+                    is_buyer = bool(t.get("isBuyer"))
+                    if qty <= 0 or px <= 0:
+                        continue
+                    if is_buyer:
+                        summary["buy_qty"] += qty
+                        buy_notional += qty * px
+                    else:
+                        summary["sell_qty"] += qty
+                        sell_notional += qty * px
+                except Exception:
+                    continue
+            if summary["buy_qty"] > 0:
+                summary["buy_vwap"] = buy_notional / summary["buy_qty"]
+            if summary["sell_qty"] > 0:
+                summary["sell_vwap"] = sell_notional / summary["sell_qty"]
+        except Exception as e:
+            print(f"[Asterdex] Error fetching fills: {e}")
+        return summary
+
     def _get_next_funding_time(self) -> int:
         """
         Calculate next 1-hour funding time (Asterdex is Hourly)

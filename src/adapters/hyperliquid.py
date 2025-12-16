@@ -371,3 +371,62 @@ class HyperliquidAdapter(ExchangeInterface):
         except Exception as e:
             print(f"[Hyperliquid] Error fetching trade fees: {e}")
             return 0.0
+
+    def get_fill_vwap(self, symbol: str, start_time: int, end_time: int) -> Dict[str, float]:
+        """
+        Return VWAP buy/sell prices and total filled qty for the window using userFills.
+        """
+        summary = {"buy_qty": 0.0, "buy_vwap": 0.0, "sell_qty": 0.0, "sell_vwap": 0.0}
+        if not self.wallet_address:
+            return summary
+
+        endpoint = "/info"
+        payload = {"type": "userFills", "user": self.wallet_address, "startTime": start_time}
+        try:
+            response = requests.post(f"{self.base_url}{endpoint}", json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            buy_notional = 0.0
+            sell_notional = 0.0
+            for item in data:
+                try:
+                    ts = int(item.get("time", 0))
+                    if ts < start_time or ts > end_time:
+                        continue
+                    coin = item.get("coin") or (item.get("delta", {}) or {}).get("coin")
+                    if coin != symbol:
+                        continue
+                    side = item.get("side") or (item.get("delta", {}) or {}).get("side")
+                    if not side:
+                        # Infer side from sz sign if available
+                        sz = item.get("sz") or (item.get("delta", {}) or {}).get("sz")
+                        try:
+                            if sz is not None and float(sz) < 0:
+                                side = "sell"
+                            elif sz is not None:
+                                side = "buy"
+                        except Exception:
+                            pass
+                    price = item.get("px") or item.get("price") or (item.get("delta", {}) or {}).get("px")
+                    sz = item.get("sz") or (item.get("delta", {}) or {}).get("sz")
+                    if price is None or sz is None:
+                        continue
+                    px = float(price)
+                    qty = abs(float(sz))
+                    if px <= 0 or qty <= 0:
+                        continue
+                    if str(side).lower() == "buy":
+                        summary["buy_qty"] += qty
+                        buy_notional += qty * px
+                    elif str(side).lower() == "sell":
+                        summary["sell_qty"] += qty
+                        sell_notional += qty * px
+                except Exception:
+                    continue
+            if summary["buy_qty"] > 0:
+                summary["buy_vwap"] = buy_notional / summary["buy_qty"]
+            if summary["sell_qty"] > 0:
+                summary["sell_vwap"] = sell_notional / summary["sell_qty"]
+        except Exception as e:
+            print(f"[Hyperliquid] Error fetching fills: {e}")
+        return summary

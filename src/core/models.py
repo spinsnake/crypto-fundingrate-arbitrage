@@ -32,6 +32,10 @@ class Signal:
     next_hl_payout: int = 0  # Hyperliquid settlement time (every 1h)
     aster_rate: float = 0.0
     hl_rate: float = 0.0
+    price_spread_pct: float = 0.0  # favorable price edge relative to mid
+    price_diff: float = 0.0  # HL mark - Aster mark
+    aster_price: float = 0.0
+    hl_price: float = 0.0
 
 @dataclass
 class Order:

@@ -6,7 +6,8 @@ from ..core.models import FundingRate, Signal
 from ..config import (
     MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_ASTER_USDT, MIN_VOLUME_HL_USDT,
     ESTIMATED_FEE_PER_ROTATION, ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST,
-    SLIPPAGE_BPS, DEBUG_FILTER_LOG, MAX_BREAK_EVEN_ROUNDS
+    SLIPPAGE_BPS, DEBUG_FILTER_LOG, MAX_BREAK_EVEN_ROUNDS,
+    MIN_PRICE_SPREAD_PCT, ENABLE_PRICE_SPREAD_FILTER
 )
 
 class FundingArbitrageStrategy(StrategyInterface):
@@ -54,6 +55,12 @@ class FundingArbitrageStrategy(StrategyInterface):
                 
             # Calculate Spread
             diff = abs(aster.rate - hl.rate)
+
+            # Price edge (mark price difference)
+            aster_price = aster.mark_price
+            hl_price = hl.mark_price
+            mid_price = (aster_price + hl_price) / 2 if (aster_price > 0 and hl_price > 0) else 0.0
+            price_diff = hl_price - aster_price  # HL - Aster
 
             # Dynamic fee per rotation (open+close both legs); fallback to config constant
             fee_per_rotation = ESTIMATED_FEE_PER_ROTATION
@@ -109,6 +116,25 @@ class FundingArbitrageStrategy(StrategyInterface):
                 direction = "LONG_HL_SHORT_ASTER"
                 exchange_long = "Hyperliquid"
                 exchange_short = "Asterdex"
+
+            # Require a favorable price edge so convergence helps PnL
+            price_edge_pct = 0.0
+            if mid_price > 0:
+                if direction == "LONG_ASTER_SHORT_HL":
+                    price_edge_pct = price_diff / mid_price  # want HL higher than Aster
+                else:
+                    price_edge_pct = -price_diff / mid_price  # want Aster higher than HL
+
+            if ENABLE_PRICE_SPREAD_FILTER and not is_watched:
+                if mid_price <= 0:
+                    log_skip(symbol, "price spread check unavailable (missing mark price)")
+                    continue
+                if price_edge_pct < MIN_PRICE_SPREAD_PCT:
+                    log_skip(
+                        symbol,
+                        f"price edge too small: {price_edge_pct:.4f} < {MIN_PRICE_SPREAD_PCT:.4f}"
+                    )
+                    continue
                 
             # Use the later funding time (usually Asterdex 8h) as the target
             next_payout = max(aster.next_funding_time, hl.next_funding_time)
@@ -147,7 +173,11 @@ class FundingArbitrageStrategy(StrategyInterface):
                 next_aster_payout=aster.next_funding_time,
                 next_hl_payout=hl.next_funding_time,
                 aster_rate=aster.rate,
-                hl_rate=hl.rate
+                hl_rate=hl.rate,
+                price_spread_pct=price_edge_pct,
+                price_diff=price_diff,
+                aster_price=aster_price,
+                hl_price=hl_price
             ))
             
         # Sort by profitability
