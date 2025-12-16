@@ -68,7 +68,8 @@ def fetch_hyperliquid_all_funding():
 
 def main():
     print("--- Starting Funding Rate Scanner ---")
-    print(f"Target: > {TARGET_MONTHLY_RETURN*100}% Monthly Return")
+    print(f"Target: > {TARGET_MONTHLY_RETURN}% Monthly Return")
+    min_return = MIN_MONTHLY_RETURN / 100
     
     # 1. Fetch Data
     print("Fetching Asterdex data...")
@@ -111,7 +112,7 @@ def main():
             net_rate_per_round = aster_rate - hl_rate
             
         # Filter by minimum monthly return (config-driven)
-        if monthly_return > MIN_MONTHLY_RETURN:
+        if monthly_return > min_return:
             opportunities.append({
                 'Symbol': symbol,
                 'Monthly %': round(monthly_return * 100, 2),

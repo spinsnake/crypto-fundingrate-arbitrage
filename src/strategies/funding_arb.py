@@ -63,7 +63,7 @@ class FundingArbitrageStrategy(StrategyInterface):
             price_diff = hl_price - aster_price  # HL - Aster
 
             # Dynamic fee per rotation (open+close both legs); fallback to config constant
-            fee_per_rotation = ESTIMATED_FEE_PER_ROTATION
+            fee_per_rotation = ESTIMATED_FEE_PER_ROTATION / 100
             if aster.taker_fee or hl.taker_fee:
                 fee_per_rotation = (aster.taker_fee + hl.taker_fee) * 2
 
@@ -125,14 +125,15 @@ class FundingArbitrageStrategy(StrategyInterface):
                 else:
                     price_edge_pct = -price_diff / mid_price  # want Aster higher than HL
 
+            min_price_edge = MIN_PRICE_SPREAD_PCT / 100
             if ENABLE_PRICE_SPREAD_FILTER and not is_watched:
                 if mid_price <= 0:
                     log_skip(symbol, "price spread check unavailable (missing mark price)")
                     continue
-                if price_edge_pct < MIN_PRICE_SPREAD_PCT:
+                if price_edge_pct < min_price_edge:
                     log_skip(
                         symbol,
-                        f"price edge too small: {price_edge_pct:.4f} < {MIN_PRICE_SPREAD_PCT:.4f}"
+                        f"price edge too small: {price_edge_pct*100:.4f}% < {MIN_PRICE_SPREAD_PCT:.4f}%"
                     )
                     continue
                 

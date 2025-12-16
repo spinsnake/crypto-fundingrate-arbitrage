@@ -136,7 +136,7 @@ def main():
                         # fallback estimate (open + close both legs) if no actual fee found
                         from src.config import ASTERDEX_TAKER_FEE, HYPERLIQUID_TAKER_FEE
                         open_notional = float(trade.get("Est_Total_Notional", 0) or 0)
-                        per_round_fee_rate = (ASTERDEX_TAKER_FEE + HYPERLIQUID_TAKER_FEE)
+                        per_round_fee_rate = (ASTERDEX_TAKER_FEE + HYPERLIQUID_TAKER_FEE) / 100
                         est_open_fee = open_notional * per_round_fee_rate
 
                         total_fees_paid = fee_aster + fee_hl
