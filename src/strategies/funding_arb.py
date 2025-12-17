@@ -1,4 +1,4 @@
-from typing import List, Dict
+﻿from typing import List, Dict
 import time
 import math
 from ..core.interfaces import StrategyInterface

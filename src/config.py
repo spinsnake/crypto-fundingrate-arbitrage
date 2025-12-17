@@ -1,3 +1,8 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Configuration
 ASTERDEX_API_URL = "https://fapi.asterdex.com"
 HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
@@ -35,7 +40,7 @@ DISCORD_ALERT_INTERVAL = 300  # seconds between Discord alerts (throttled); scan
 # Notification Settings
 TELEGRAM_BOT_TOKEN = "" # User to fill
 TELEGRAM_CHAT_ID = ""   # User to fill
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1450348767164502058/JBmAhwoHfTilBfyt-FYD2YpJJpioxJNaDV7Bdde6idS31DQwD_ee6pt9hZhYrqQVq3bZ"
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 
 # Debugging
 DEBUG_FILTER_LOG = False  # Set True to print why symbols are filtered out (volume, inactive, net<=0, etc.)

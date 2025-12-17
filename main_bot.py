@@ -56,58 +56,9 @@ def main():
                 watchlist_signals = [s for s in signals if s.is_watchlist]
                 other_signals = [s for s in signals if not s.is_watchlist]
                 final_signals = watchlist_signals + other_signals
+                live_sections = {}
 
-                if final_signals:
-                    top_signal = final_signals[0]
-                    
-                    # Payout timing
-                    aster_mins_left = TimeHelper.ms_to_mins_remaining(top_signal.next_aster_payout)
-                    aster_bkk = TimeHelper.ms_to_bkk_str(top_signal.next_aster_payout)
-                    hl_mins_left = TimeHelper.ms_to_mins_remaining(top_signal.next_hl_payout)
-                    hl_bkk = TimeHelper.ms_to_bkk_str(top_signal.next_hl_payout)
-
-                    icon = "[WATCH]" if top_signal.is_watchlist else "[SIG]"
-                    warning_text = f" | {top_signal.warning}" if top_signal.warning else ""
-                    hold_hours = top_signal.break_even_rounds * 8
-                    price_edge_pct = top_signal.price_spread_pct * 100
-                    price_line = (
-                        f"Price edge: {price_edge_pct:.4f}% "
-                        f"(Asterdex {top_signal.aster_price:.4f} / Hyperliq {top_signal.hl_price:.4f})"
-                    )
-
-                    # Determine Pay/Recv
-                    aster_action = "RECV" if top_signal.aster_rate > 0 else "PAY"  # assuming short Aster
-                    hl_action = "PAY" if top_signal.hl_rate > 0 else "RECV"        # assuming long HL
-                    if top_signal.direction == "LONG_ASTER_SHORT_HL":
-                        aster_action = "PAY" if top_signal.aster_rate > 0 else "RECV"
-                        hl_action = "RECV" if top_signal.hl_rate > 0 else "PAY"
-
-                    msg = (
-                        f"{icon} {top_signal.symbol}{warning_text}\n"
-                        f"Monthly Return (net): {top_signal.projected_monthly_return*100:.2f}%\n"
-                        f"Spread 8h (net of fees): {top_signal.spread_net*100:.4f}%\n"
-                        f"Round Return (after fees): {top_signal.round_return_net*100:.4f}%\n"
-                        f"{price_line}\n"
-                        f"Rates (8h):\n"
-                        f"  Asterdex: {top_signal.aster_rate*100:.4f}% ({aster_action})\n"
-                        f"  Hyperliq: {top_signal.hl_rate*100:.4f}% ({hl_action})\n"
-                        f"Min Hold: {top_signal.break_even_rounds} rounds (~{hold_hours}h) to break even\n"
-                        f"Asterdex Payout: in {aster_mins_left} mins ({aster_bkk} BKK)\n"
-                        f"HL Payout: in {hl_mins_left} mins ({hl_bkk} BKK)\n"
-                        f"action: {top_signal.direction}\n"
-                        f"(Long {top_signal.exchange_long} / Short {top_signal.exchange_short})"
-                    )
-                    print(msg)
-                    telegram_notifier.send_alert(msg)
-                    now_sec = time.time()
-                    if now_sec - last_discord_alert_ts >= DISCORD_ALERT_INTERVAL:
-                        discord_notifier.send_alert(msg)
-                        last_discord_alert_ts = now_sec
-                    else:
-                        wait_sec = int(DISCORD_ALERT_INTERVAL - (now_sec - last_discord_alert_ts))
-                        print(f"[Discord] Skipped (cooldown {wait_sec}s remaining)")
-
-                # --- Live PnL for Watchlist ---
+                # --- Live PnL for Watchlist (also used for alerts) ---
                 hl_positions = {p["symbol"]: p for p in hl.get_open_positions()}
                 aster_positions = {p["symbol"]: p for p in aster.get_open_positions()}
                 for symbol in WATCHLIST:
@@ -366,8 +317,83 @@ def main():
                             except Exception as e:
                                 print(f"[Auto-Close] Error: {e}")
                         print(f"   (Open since {start_time_str})\n")
+
+                        fee_display_text = " | ".join(fee_display_notes)
+                        leg_text = leg_ret_info.replace("   [LEG ] ", "").strip() if leg_ret_info else ""
+                        live_section_lines = [
+                            f"💹 LIVE {symbol}",
+                            f"   • FUND: {net_funding:+.4f} USDT (Asterdex {fund_aster:+.4f}, Hyperliquid {fund_hl:+.4f})",
+                            f"   • PNL: {price_pnl:+.4f} USDT ({pnl_source})",
+                            f"   • SLIP est close: {price_pnl_slip:+.4f} USDT",
+                            f"   • FEE: -{total_costs:.4f} USDT ({fee_display_text}; EST)",
+                            f"   • BAL: {total_equity:.4f} USDT ({equity_source})",
+                            f"   • RET: {ret_icon} {ret_pct:+.4f}% of equity",
+                        ]
+                        if leg_text:
+                            live_section_lines.append(f"   • LEG: {leg_text}")
+                        live_section_lines.append(f"   • NET: {net_icon} {net_pnl:+.4f} USDT")
+                        live_section_lines.append(f"   • Open since {start_time_str}")
+                        live_sections[symbol] = "\n".join(live_section_lines)
                     except Exception as e:
                         print(f"[Live PnL] Error for {symbol}: {e}")
+
+                if final_signals:
+                    top_signal = final_signals[0]
+
+                    # Payout timing
+                    aster_mins_left = TimeHelper.ms_to_mins_remaining(top_signal.next_aster_payout)
+                    aster_bkk = TimeHelper.ms_to_bkk_str(top_signal.next_aster_payout)
+                    hl_mins_left = TimeHelper.ms_to_mins_remaining(top_signal.next_hl_payout)
+                    hl_bkk = TimeHelper.ms_to_bkk_str(top_signal.next_hl_payout)
+
+                    icon = "👀 WATCH" if top_signal.is_watchlist else "📣 SIG"
+                    warning_text = f" | {top_signal.warning}" if top_signal.warning else ""
+                    hold_hours = top_signal.break_even_rounds * 8
+                    price_edge_pct = top_signal.price_spread_pct * 100
+                    price_line = (
+                        f"💵 Price edge: {price_edge_pct:.4f}% "
+                        f"(Asterdex {top_signal.aster_price:.4f} / Hyperliq {top_signal.hl_price:.4f})"
+                    )
+
+                    # Determine Pay/Recv
+                    aster_action = "RECV" if top_signal.aster_rate > 0 else "PAY"  # assuming short Aster
+                    hl_action = "PAY" if top_signal.hl_rate > 0 else "RECV"        # assuming long HL
+                    if top_signal.direction == "LONG_ASTER_SHORT_HL":
+                        aster_action = "PAY" if top_signal.aster_rate > 0 else "RECV"
+                        hl_action = "RECV" if top_signal.hl_rate > 0 else "PAY"
+
+                    separator = "━━━━━━━━━━━━"
+                    msg_lines = [
+                        f"🔔 {icon} {top_signal.symbol}{warning_text}",
+                        separator,
+                        f"📅 Monthly Return (net): {top_signal.projected_monthly_return*100:.2f}%",
+                        f"📊 Spread 8h (net of fees): {top_signal.spread_net*100:.4f}%",
+                        f"💫 Round Return (after fees): {top_signal.round_return_net*100:.4f}%",
+                        price_line,
+                        "💱 Rates (8h):",
+                        f"  • Asterdex: {top_signal.aster_rate*100:.4f}% ({aster_action})",
+                        f"  • Hyperliq: {top_signal.hl_rate*100:.4f}% ({hl_action})",
+                        f"⏳ Min Hold: {top_signal.break_even_rounds} rounds (~{hold_hours}h) to break even",
+                        f"🕰️ Asterdex Payout: in {aster_mins_left} mins ({aster_bkk} BKK)",
+                        f"🕰️ HL Payout: in {hl_mins_left} mins ({hl_bkk} BKK)",
+                        f"🎯 Action: {top_signal.direction}",
+                        f"   (Long {top_signal.exchange_long} / Short {top_signal.exchange_short})",
+                    ]
+                    live_section_text = live_sections.get(top_signal.symbol)
+                    if live_section_text:
+                        msg_lines.append(separator)
+                        msg_lines.append(live_section_text)
+
+                    msg = "\n".join(msg_lines)
+                    print(msg)
+                    telegram_notifier.send_alert(msg)
+                    now_sec = time.time()
+                    if now_sec - last_discord_alert_ts >= DISCORD_ALERT_INTERVAL:
+                        discord_notifier.send_alert(msg)
+                        last_discord_alert_ts = now_sec
+                    else:
+                        wait_sec = int(DISCORD_ALERT_INTERVAL - (now_sec - last_discord_alert_ts))
+                        print(f"[Discord] Skipped (cooldown {wait_sec}s remaining)")
 
                 if ENABLE_TRADING:
                     print("[Execution] Auto-trading is enabled but not implemented yet.")
