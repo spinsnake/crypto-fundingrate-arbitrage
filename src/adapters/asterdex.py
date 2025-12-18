@@ -103,24 +103,59 @@ class AsterdexAdapter(ExchangeInterface):
 
     def get_balance(self) -> float:
         """
-        Best-effort fetch USDT balance via signed /fapi/v2/balance (Binance-style).
+        Best-effort fetch USDT account equity (margin balance) for futures.
+
+        Why: the UI shows both "Wallet Balance" and "Margin Balance"; for PnL / equity tracking
+        we want the margin/equity figure (wallet + unrealized PnL), not only wallet cash.
+
+        Implementation:
+        - Try signed /fapi/v2/account and return totalMarginBalance (Binance-style field),
+          falling back to totalWalletBalance + totalUnrealizedProfit when available.
+        - If that endpoint/fields are unavailable, fall back to signed /fapi/v2/balance "balance".
+
         Returns 0.0 on error.
         """
         if not self.api_key or not self.api_secret:
             print("[Asterdex] get_balance missing api key/secret, returning 0")
             return 0.0
 
-        endpoint = "/fapi/v2/balance"
         timestamp = int(time.time() * 1000)
-        params = {"timestamp": timestamp, "recvWindow": 5000}
-        query = urllib.parse.urlencode(params)
-        signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
         headers = {"X-MBX-APIKEY": self.api_key}
-        try:
-            resp = requests.get(f"{self.base_url}{endpoint}", params={**params, "signature": signature}, headers=headers, timeout=10)
+
+        def _signed_get(endpoint: str) -> Any:
+            params = {"timestamp": timestamp, "recvWindow": 5000}
+            query = urllib.parse.urlencode(params)
+            signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+            resp = requests.get(
+                f"{self.base_url}{endpoint}",
+                params={**params, "signature": signature},
+                headers=headers,
+                timeout=10,
+            )
             resp.raise_for_status()
-            data = resp.json()
-            # Expect list of balances; pick USDT
+            return resp.json()
+
+        # 1) Prefer account equity (margin balance)
+        try:
+            data = _signed_get("/fapi/v2/account")
+            if isinstance(data, dict):
+                # Most useful field (Binance futures)
+                total_margin = data.get("totalMarginBalance")
+                if total_margin is not None:
+                    return float(total_margin or 0)
+
+                # Fallback: wallet + unrealized
+                total_wallet = data.get("totalWalletBalance")
+                total_unreal = data.get("totalUnrealizedProfit")
+                if total_wallet is not None or total_unreal is not None:
+                    return float(total_wallet or 0) + float(total_unreal or 0)
+        except Exception as e:
+            # Don't spam logs here; we'll fall back to /balance
+            print(f"[Asterdex] get_balance (/fapi/v2/account) failed, falling back: {e}")
+
+        # 2) Fallback: balance list (often closer to wallet balance)
+        try:
+            data = _signed_get("/fapi/v2/balance")
             if isinstance(data, list):
                 for item in data:
                     if item.get("asset") == "USDT":

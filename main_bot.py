@@ -326,7 +326,7 @@ def main():
                             f"   • PNL: {price_pnl:+.4f} USDT ({pnl_source})",
                             f"   • SLIP est close: {price_pnl_slip:+.4f} USDT",
                             f"   • FEE: -{total_costs:.4f} USDT ({fee_display_text}; EST)",
-                            f"   • BAL: {total_equity:.4f} USDT ({equity_source})",
+                            f"   • BAL: {total_equity:.4f} USDT (Asterdex {bal_aster:.4f}, Hyperliquid {bal_hl:.4f}, {equity_source})",
                             f"   • RET: {ret_icon} {ret_pct:+.4f}% of equity",
                         ]
                         if leg_text:
