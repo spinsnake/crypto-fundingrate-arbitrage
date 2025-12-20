@@ -10,26 +10,48 @@ load_dotenv()
 
 from src.adapters.asterdex import AsterdexAdapter  # noqa: E402
 from src.adapters.hyperliquid import HyperliquidAdapter  # noqa: E402
+from src.adapters.lighter import LighterAdapter  # noqa: E402
 from src.core.execution_manager import ExecutionManager  # noqa: E402
 from datetime import datetime
 import time
 from src.core.models import Order  # noqa: E402
 
+EXCHANGE_REGISTRY = {
+    "asterdex": AsterdexAdapter,
+    "hyperliquid": HyperliquidAdapter,
+    "lighter": LighterAdapter,
+}
+
+# Set exchanges to close (keys from EXCHANGE_REGISTRY)
+CLOSE_EXCHANGES = ["asterdex", "hyperliquid", "lighter"]
+
+
+def _resolve_close_exchange_keys() -> list[str]:
+    keys = [str(k).lower() for k in CLOSE_EXCHANGES]
+    keys = [k for k in keys if k in EXCHANGE_REGISTRY]
+    if not keys:
+        print("[Config] CLOSE_EXCHANGES invalid/empty. Using all exchanges.")
+        return list(EXCHANGE_REGISTRY.keys())
+    return keys
+
 
 def main():
-    aster = AsterdexAdapter()
-    hyper = HyperliquidAdapter()
     execu = ExecutionManager()
+    exchange_keys = _resolve_close_exchange_keys()
+    exchanges = [EXCHANGE_REGISTRY[key]() for key in exchange_keys]
+    exchange_by_name = {ex.get_name(): ex for ex in exchanges}
 
     positions = []
-    positions.extend([{"exchange": "Asterdex", **p} for p in aster.get_open_positions()])
-    positions.extend([{"exchange": "Hyperliquid", **p} for p in hyper.get_open_positions()])
+    for ex in exchanges:
+        ex_name = ex.get_name()
+        positions.extend([{"exchange": ex_name, **p} for p in ex.get_open_positions()])
 
     if not positions:
-        print("[Close] No open positions found on either exchange.")
+        ex_names = ", ".join(exchange_by_name.keys())
+        print(f"[Close] No open positions found on: {ex_names}.")
         return
 
-    summary = {"Asterdex": [], "Hyperliquid": []}
+    summary = {name: [] for name in exchange_by_name}
 
     print("\n" + "="*50)
     print("       MANUAL CLOSE ORDER & PNL REPORT       ")
@@ -72,45 +94,33 @@ def main():
         funding_pnl = 0.0
         if start_time_ms > 0:
             now_ms = int(time.time() * 1000)
-            if exchange == "Asterdex":
-                funding_pnl = aster.get_funding_history(symbol, start_time_ms, now_ms)
-            elif exchange == "Hyperliquid":
-                funding_pnl = hyper.get_funding_history(symbol, start_time_ms, now_ms)
-            print(f"   > Realized Funding: {funding_pnl:+.4f} USDT")
+        exchange_obj = exchange_by_name.get(exchange)
+        if exchange_obj:
+            funding_pnl = exchange_obj.get_funding_history(symbol, start_time_ms, now_ms)
+        print(f"   > Realized Funding: {funding_pnl:+.4f} USDT")
 
         # 3. Close the Position
         close_price = 0.0
         fee_cost = 0.0
         res = {}
         
-        if exchange == "Asterdex":
-            book = aster.get_top_of_book(symbol)
-            target_side = "SELL" if side == "LONG" else "BUY"
-            # Price logic
-            book_price = book.get("bid" if target_side == "SELL" else "ask", 0.0)
-            price = execu._price_with_slippage(book_price, target_side)
-            
-            res = aster.place_order(
-                Order(symbol=symbol, side=target_side, quantity=qty, price=price, type="LIMIT")
-            )
-            summary["Asterdex"].append(res)
-            
-            # Estimate close data
-            close_price = price 
-            # In simple manual mode, we might not get fill price back easily without querying order. 
-            # Use placed price as estimate.
-            
-        elif exchange == "Hyperliquid":
-            book = hyper.get_top_of_book(symbol)
-            target_side = "SELL" if side == "LONG" else "BUY"
-            book_price = book.get("bid" if target_side == "SELL" else "ask", 0.0)
-            price = execu._price_with_slippage(book_price, target_side)
-            
-            res = hyper.place_order(
-                Order(symbol=symbol, side=target_side, quantity=qty, price=price, type="LIMIT")
-            )
-            summary["Hyperliquid"].append(res)
-            close_price = price
+        if not exchange_obj:
+            print(f"   > Skipped: Missing adapter for {exchange}")
+            continue
+
+        book = exchange_obj.get_top_of_book(symbol)
+        target_side = "SELL" if side == "LONG" else "BUY"
+        book_price = book.get("bid" if target_side == "SELL" else "ask", 0.0)
+        price = execu._price_with_slippage(book_price, target_side)
+        if price <= 0:
+            print("   > Skipped: Invalid book price")
+            continue
+
+        res = exchange_obj.place_order(
+            Order(symbol=symbol, side=target_side, quantity=qty, price=price, type="LIMIT")
+        )
+        summary[exchange].append(res)
+        close_price = price
 
         # 4. Calculate Trade PnL
         # Long: (Close - Open) * Qty
@@ -171,8 +181,8 @@ def main():
                 statuses.append(st or "unknown")
         return ", ".join(statuses) if statuses else "unknown"
 
-    print(f"\n[Summary] Asterdex close: {summarize(summary['Asterdex'])}")
-    print(f"[Summary] Hyperliquid close: {summarize(summary['Hyperliquid'])}")
+    for ex_name, ex_summary in summary.items():
+        print(f"[Summary] {ex_name} close: {summarize(ex_summary)}")
 
 
 if __name__ == "__main__":

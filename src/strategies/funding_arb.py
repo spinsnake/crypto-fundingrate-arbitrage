@@ -5,17 +5,46 @@ from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
 from ..config import (
     MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_ASTER_USDT, MIN_VOLUME_HL_USDT,
-    ESTIMATED_FEE_PER_ROTATION, ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST,
+    MIN_VOLUME_LIGHTER_USDT, ESTIMATED_FEE_PER_ROTATION, ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST,
     SLIPPAGE_BPS, DEBUG_FILTER_LOG, MAX_BREAK_EVEN_ROUNDS,
-    MIN_PRICE_SPREAD_PCT, ENABLE_PRICE_SPREAD_FILTER
+    MIN_PRICE_SPREAD_PCT, ENABLE_PRICE_SPREAD_FILTER, SCAN_EXCHANGES
 )
+
+EXCHANGE_KEY_TO_NAME = {
+    "asterdex": "Asterdex",
+    "hyperliquid": "Hyperliquid",
+    "lighter": "Lighter",
+}
+
+MIN_VOLUME_BY_EXCHANGE = {
+    "Asterdex": MIN_VOLUME_ASTER_USDT,
+    "Hyperliquid": MIN_VOLUME_HL_USDT,
+    "Lighter": MIN_VOLUME_LIGHTER_USDT,
+}
+
+
+def _resolve_exchange_pair() -> tuple[str, str]:
+    keys = [str(k).lower() for k in SCAN_EXCHANGES]
+    if len(keys) != 2 or len(set(keys)) != 2:
+        return ("Asterdex", "Hyperliquid")
+    ex_a = EXCHANGE_KEY_TO_NAME.get(keys[0])
+    ex_b = EXCHANGE_KEY_TO_NAME.get(keys[1])
+    if not ex_a or not ex_b or ex_a == ex_b:
+        return ("Asterdex", "Hyperliquid")
+    return (ex_a, ex_b)
+
+
+def _direction_key(name: str) -> str:
+    return name.upper().replace(" ", "")
 
 class FundingArbitrageStrategy(StrategyInterface):
     def analyze(self, market_data: Dict[str, Dict[str, FundingRate]]) -> List[Signal]:
         signals = []
         debug = DEBUG_FILTER_LOG
-        
-        # market_data structure: { 'BTC': { 'Asterdex': RateObj, 'Hyperliquid': RateObj } }
+
+        ex_a_name, ex_b_name = _resolve_exchange_pair()
+
+        # market_data structure: { 'BTC': { 'ExchangeName': RateObj } }
 
         def log_skip(symbol: str, reason: str):
             if debug:
@@ -27,12 +56,11 @@ class FundingArbitrageStrategy(StrategyInterface):
                 log_skip(symbol, f"missing second exchange (have {list(rates.keys())})")
                 continue
                 
-            # For this specific strategy, we look for Asterdex vs Hyperliquid
-            aster = rates.get('Asterdex')
-            hl = rates.get('Hyperliquid')
-            
-            if not aster or not hl:
-                log_skip(symbol, "missing Asterdex or Hyperliquid rate")
+            ex_a = rates.get(ex_a_name)
+            ex_b = rates.get(ex_b_name)
+
+            if not ex_a or not ex_b:
+                log_skip(symbol, f"missing {ex_a_name} or {ex_b_name} rate")
                 continue
 
             is_watched = symbol in WATCHLIST
@@ -40,32 +68,39 @@ class FundingArbitrageStrategy(StrategyInterface):
 
             # Delist/Inactive Check
             if ENABLE_DELIST_FILTER and not is_watched:
-                if not aster.is_active or not hl.is_active:
-                    log_skip(symbol, f"inactive: aster_active={aster.is_active} hl_active={hl.is_active}")
+                if not ex_a.is_active or not ex_b.is_active:
+                    log_skip(
+                        symbol,
+                        f"inactive: {ex_a_name}={ex_a.is_active} {ex_b_name}={ex_b.is_active}"
+                    )
                     continue
 
             # Volume Check
             if ENABLE_VOLUME_FILTER and not is_watched:
-                if aster.volume_24h < MIN_VOLUME_ASTER_USDT or hl.volume_24h < MIN_VOLUME_HL_USDT:
+                min_a = MIN_VOLUME_BY_EXCHANGE.get(ex_a_name)
+                min_b = MIN_VOLUME_BY_EXCHANGE.get(ex_b_name)
+                low_a = min_a is not None and ex_a.volume_24h < min_a
+                low_b = min_b is not None and ex_b.volume_24h < min_b
+                if low_a or low_b:
                     log_skip(
                         symbol,
-                        f"low volume: aster={aster.volume_24h:.0f}/{MIN_VOLUME_ASTER_USDT} hl={hl.volume_24h:.0f}/{MIN_VOLUME_HL_USDT}"
+                        f"low volume: {ex_a_name}={ex_a.volume_24h:.0f}/{min_a} {ex_b_name}={ex_b.volume_24h:.0f}/{min_b}"
                     )
                     continue
                 
             # Calculate Spread
-            diff = abs(aster.rate - hl.rate)
+            diff = abs(ex_a.rate - ex_b.rate)
 
             # Price edge (mark price difference)
-            aster_price = aster.mark_price
-            hl_price = hl.mark_price
-            mid_price = (aster_price + hl_price) / 2 if (aster_price > 0 and hl_price > 0) else 0.0
-            price_diff = hl_price - aster_price  # HL - Aster
+            price_a = ex_a.mark_price
+            price_b = ex_b.mark_price
+            mid_price = (price_a + price_b) / 2 if (price_a > 0 and price_b > 0) else 0.0
+            price_diff = price_b - price_a
 
             # Dynamic fee per rotation (open+close both legs); fallback to config constant
             fee_per_rotation = ESTIMATED_FEE_PER_ROTATION / 100
-            if aster.taker_fee or hl.taker_fee:
-                fee_per_rotation = (aster.taker_fee + hl.taker_fee) * 2
+            if ex_a.taker_fee or ex_b.taker_fee:
+                fee_per_rotation = (ex_a.taker_fee + ex_b.taker_fee) * 2
 
             # Slippage allowance per round (approx 4 legs * slippage_bps)
             slippage_cost = (SLIPPAGE_BPS / 10000) * 4
@@ -106,24 +141,24 @@ class FundingArbitrageStrategy(StrategyInterface):
                 warning_msg = "⚠️ WARNING: Net Profit is NEGATIVE!"
                 
             # Determine Direction
-            if hl.rate > aster.rate:
-                # Short HL (Receive High), Long Aster (Pay Low)
-                direction = "LONG_ASTER_SHORT_HL"
-                exchange_long = "Asterdex"
-                exchange_short = "Hyperliquid"
+            if ex_b.rate > ex_a.rate:
+                # Short ex_b (Receive High), Long ex_a (Pay Low)
+                direction = f"LONG_{_direction_key(ex_a_name)}_SHORT_{_direction_key(ex_b_name)}"
+                exchange_long = ex_a_name
+                exchange_short = ex_b_name
             else:
-                # Short Aster (Receive High), Long HL (Pay Low)
-                direction = "LONG_HL_SHORT_ASTER"
-                exchange_long = "Hyperliquid"
-                exchange_short = "Asterdex"
+                # Short ex_a (Receive High), Long ex_b (Pay Low)
+                direction = f"LONG_{_direction_key(ex_b_name)}_SHORT_{_direction_key(ex_a_name)}"
+                exchange_long = ex_b_name
+                exchange_short = ex_a_name
 
             # Require a favorable price edge so convergence helps PnL
             price_edge_pct = 0.0
             if mid_price > 0:
-                if direction == "LONG_ASTER_SHORT_HL":
-                    price_edge_pct = price_diff / mid_price  # want HL higher than Aster
+                if exchange_long == ex_a_name:
+                    price_edge_pct = price_diff / mid_price  # want ex_b higher than ex_a
                 else:
-                    price_edge_pct = -price_diff / mid_price  # want Aster higher than HL
+                    price_edge_pct = -price_diff / mid_price  # want ex_a higher than ex_b
 
             min_price_edge = MIN_PRICE_SPREAD_PCT / 100
             if ENABLE_PRICE_SPREAD_FILTER and not is_watched:
@@ -138,7 +173,7 @@ class FundingArbitrageStrategy(StrategyInterface):
                     continue
                 
             # Use the later funding time (usually Asterdex 8h) as the target
-            next_payout = max(aster.next_funding_time, hl.next_funding_time)
+            next_payout = max(ex_a.next_funding_time, ex_b.next_funding_time)
 
             # Calculate Break-Even Rounds (Fee / Spread)
             # Avoid division by zero and handle negative net
@@ -171,14 +206,22 @@ class FundingArbitrageStrategy(StrategyInterface):
                 is_watchlist=is_watched,
                 warning=warning_msg,
                 break_even_rounds=break_even_rounds,
-                next_aster_payout=aster.next_funding_time,
-                next_hl_payout=hl.next_funding_time,
-                aster_rate=aster.rate,
-                hl_rate=hl.rate,
+                exchange_a=ex_a_name,
+                exchange_b=ex_b_name,
+                rate_a=ex_a.rate,
+                rate_b=ex_b.rate,
+                next_payout_a=ex_a.next_funding_time,
+                next_payout_b=ex_b.next_funding_time,
+                price_a=price_a,
+                price_b=price_b,
+                next_aster_payout=ex_a.next_funding_time,
+                next_hl_payout=ex_b.next_funding_time,
+                aster_rate=ex_a.rate,
+                hl_rate=ex_b.rate,
                 price_spread_pct=price_edge_pct,
                 price_diff=price_diff,
-                aster_price=aster_price,
-                hl_price=hl_price
+                aster_price=price_a,
+                hl_price=price_b
             ))
             
         # Sort by profitability

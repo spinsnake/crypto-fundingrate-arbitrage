@@ -11,14 +11,30 @@ load_dotenv()
 
 from src.adapters.asterdex import AsterdexAdapter  # noqa: E402
 from src.adapters.hyperliquid import HyperliquidAdapter  # noqa: E402
+from src.adapters.lighter import LighterAdapter  # noqa: E402
 from src.core.execution_manager import ExecutionManager  # noqa: E402
 from src.config import DEFAULT_LEVERAGE  # noqa: E402
 
-SYMBOL = "HEMI"
+SYMBOL = "RESOLV"
 # Fallback notional if balances not available
-NOTIONAL_FALLBACK = 560  # per leg in quote (USDT/USDC)
+NOTIONAL_FALLBACK = 560  # per leg in quote
 SAFETY_BUFFER = 0.9       # use 90% of min equity to leave margin buffer
-DIRECTION = "LONG_HL_SHORT_ASTER"  # Options: "LONG_HL_SHORT_ASTER" or "LONG_ASTER_SHORT_HL"
+DIRECTION = "LONG_LIGHTER_SHORT_HL"  # See DIRECTION_MAP for options
+
+EXCHANGE_REGISTRY = {
+    "asterdex": AsterdexAdapter,
+    "hyperliquid": HyperliquidAdapter,
+    "lighter": LighterAdapter,
+}
+
+DIRECTION_MAP = {
+    "LONG_HL_SHORT_ASTER": ("hyperliquid", "asterdex"),
+    "LONG_ASTER_SHORT_HL": ("asterdex", "hyperliquid"),
+    "LONG_LIGHTER_SHORT_HL": ("lighter", "hyperliquid"),
+    "LONG_HL_SHORT_LIGHTER": ("hyperliquid", "lighter"),
+    "LONG_LIGHTER_SHORT_ASTER": ("lighter", "asterdex"),
+    "LONG_ASTER_SHORT_LIGHTER": ("asterdex", "lighter"),
+}
 
 
 def within_window_bkk(window_minutes: int = 30) -> tuple[bool, float, str]:
@@ -47,41 +63,40 @@ def main():
     #     print(f"[Open] Too early. Next payout {target_str} BKK in {mins:.1f} mins. Allowed window: last 30 mins before payout.")
     #     return
 
-    aster = AsterdexAdapter()
-    hyper = HyperliquidAdapter()
     execu = ExecutionManager()
+    exchanges = {key: cls() for key, cls in EXCHANGE_REGISTRY.items()}
 
     # Determine long/short based on DIRECTION
-    if DIRECTION == "LONG_HL_SHORT_ASTER":
-        exchange_long = hyper
-        exchange_short = aster
-        long_name = "Hyperliquid"
-        short_name = "Asterdex"
-    else:  # LONG_ASTER_SHORT_HL
-        exchange_long = aster
-        exchange_short = hyper
-        long_name = "Asterdex"
-        short_name = "Hyperliquid"
+    if DIRECTION not in DIRECTION_MAP:
+        raise ValueError(f"Unknown DIRECTION '{DIRECTION}'. Options: {list(DIRECTION_MAP.keys())}")
+    long_key, short_key = DIRECTION_MAP[DIRECTION]
+    exchange_long = exchanges[long_key]
+    exchange_short = exchanges[short_key]
+    long_name = exchange_long.get_name()
+    short_name = exchange_short.get_name()
 
     # Auto-calc notional per leg from balances (use min equity across exchanges)
-    bal_aster = aster.get_balance()
-    bal_hl = hyper.get_balance()
+    bal_long = exchange_long.get_balance()
+    bal_short = exchange_short.get_balance()
     notional = NOTIONAL_FALLBACK
-    if bal_aster > 0 and bal_hl > 0:
-        base_capital = min(bal_aster, bal_hl) * SAFETY_BUFFER
+    if bal_long > 0 and bal_short > 0:
+        base_capital = min(bal_long, bal_short) * SAFETY_BUFFER
         notional = base_capital * DEFAULT_LEVERAGE
     print(f"[Open] symbol={SYMBOL} notional={notional:.2f} direction={DIRECTION}")
-    print(f"[Open] Balances -> Asterdex: {bal_aster:.4f}, Hyperliquid: {bal_hl:.4f} (leverage {DEFAULT_LEVERAGE}x, buffer {SAFETY_BUFFER*100:.0f}%)")
+    print(
+        f"[Open] Balances -> {long_name}: {bal_long:.4f}, {short_name}: {bal_short:.4f} "
+        f"(leverage {DEFAULT_LEVERAGE}x, buffer {SAFETY_BUFFER*100:.0f}%)"
+    )
     print(f"[Open] Long on {long_name}, Short on {short_name}")
     print(f"[Open] Next payout {target_str} BKK in {mins:.1f} mins")
     res = execu.open_spread(SYMBOL, notional, exchange_long=exchange_long, exchange_short=exchange_short)
     # Summarize per exchange
     long_res = res.get("long", {})
     short_res = res.get("short", {})
-    aster_status = long_res.get("status", long_res.get("response", {}).get("status", "unknown"))
-    hyper_status = short_res.get("status", short_res.get("response", {}).get("status", "unknown"))
-    print(f"[Summary] Asterdex open: {aster_status}")
-    print(f"[Summary] Hyperliquid open: {hyper_status}")
+    long_status = long_res.get("status", long_res.get("response", {}).get("status", "unknown"))
+    short_status = short_res.get("status", short_res.get("response", {}).get("status", "unknown"))
+    print(f"[Summary] {long_name} open: {long_status}")
+    print(f"[Summary] {short_name} open: {short_status}")
     print(res)
 
 

@@ -10,6 +10,7 @@ load_dotenv()
 
 from src.adapters.asterdex import AsterdexAdapter  # noqa: E402
 from src.adapters.hyperliquid import HyperliquidAdapter  # noqa: E402
+from src.adapters.lighter import LighterAdapter  # noqa: E402
 
 
 def main():
@@ -23,6 +24,11 @@ def main():
     except Exception as e:
         print(f"[Test] Hyperliquid init failed: {e}")
         hyper = None
+    try:
+        lighter = LighterAdapter()
+    except Exception as e:
+        print(f"[Test] Lighter init failed: {e}")
+        lighter = None
 
     if aster:
         try:
@@ -41,6 +47,16 @@ def main():
             print(f"[Test] Hyperliquid connection check failed: {e}")
     else:
         print("[Test] Hyperliquid connection: FAIL (init error)")
+
+    if lighter:
+        try:
+            lighter_ok = lighter.test_connection()
+            print("[Test] Lighter connection:", "OK" if lighter_ok else "FAIL")
+            print(lighter.get_open_positions())
+        except Exception as e:
+            print(f"[Test] Lighter connection check failed: {e}")
+    else:
+        print("[Test] Lighter connection: FAIL (init error)")
 
 
 if __name__ == "__main__":
