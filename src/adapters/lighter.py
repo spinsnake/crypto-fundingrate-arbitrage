@@ -47,6 +47,8 @@ class LighterAdapter(ExchangeInterface):
         self._account_index_cached: Optional[int] = None
         self._account_index_checked = False
         self._signer_client = None
+        self._auth_token: Optional[str] = None
+        self._auth_token_expiry: float = 0.0
 
     def get_name(self) -> str:
         return "Lighter"
@@ -143,6 +145,35 @@ class LighterAdapter(ExchangeInterface):
                 )
 
             return asyncio.run(_build())
+
+    def _get_auth_token(self) -> str:
+        now = time.time()
+        if self._auth_token and now < self._auth_token_expiry:
+            return self._auth_token
+        account_index = self._account_index_int()
+        if account_index is None:
+            return ""
+        if not self.api_private_keys:
+            return ""
+        if self._signer_client is None:
+            self._signer_client = self._create_signer_client(account_index)
+            if self._signer_client is None:
+                return ""
+        api_key_index = self.api_key_index
+        if api_key_index is None:
+            api_key_index = sorted(self.api_private_keys.keys())[0]
+        try:
+            auth, err = self._signer_client.create_auth_token_with_expiry(api_key_index=api_key_index)
+            if err:
+                print(f"[Lighter] auth token error: {err}")
+                return ""
+            if auth:
+                self._auth_token = auth
+                self._auth_token_expiry = now + 9 * 60
+                return auth
+        except Exception as e:
+            print(f"[Lighter] auth token exception: {e}")
+        return ""
 
     def _account_index_int(self) -> Optional[int]:
         if self.account_index:
@@ -276,10 +307,11 @@ class LighterAdapter(ExchangeInterface):
             if taker_fee is None:
                 taker_fee = LIGHTER_TAKER_FEE / 100
 
+            # Lighter funding is hourly, but /funding-rates is normalized to 8h
+            rate_hourly = rate_raw / 8 if rate_raw else 0.0
             rates[symbol] = FundingRate(
                 symbol=symbol,
-                # Lighter funding is hourly; normalize to 8h like other adapters
-                rate=rate_raw * 8,
+                rate=rate_hourly,
                 mark_price=self._to_float(detail.get("last_trade_price", 0.0)),
                 source=self.get_name(),
                 timestamp=int(time.time() * 1000),
@@ -513,10 +545,13 @@ class LighterAdapter(ExchangeInterface):
 
         total = 0.0
         cursor = None
+        auth_token = self._get_auth_token()
         for _ in range(5):
-            params = {"account_index": account_index, "limit": 200, "market_id": market_id}
+            params = {"account_index": account_index, "limit": 100, "market_id": market_id}
             if cursor:
                 params["cursor"] = cursor
+            if auth_token:
+                params["auth"] = auth_token
             try:
                 resp = requests.get(
                     f"{self.base_url}/api/v1/positionFunding",

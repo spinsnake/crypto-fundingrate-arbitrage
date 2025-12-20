@@ -72,9 +72,8 @@ class AsterdexAdapter(ExchangeInterface):
                 # Convert ETHUSDT -> ETH
                 base_symbol = symbol[:-4]
                 
-                # Get dynamic interval
+                # Get dynamic interval (1/4/8h)
                 interval_hours = self._get_funding_interval_hours(base_symbol)
-                norm_factor = 8 / interval_hours if interval_hours > 0 else 1
                 
                 # Use API provided nextFundingTime directly
                 next_funding_time = int(item.get('nextFundingTime', 0))
@@ -86,7 +85,7 @@ class AsterdexAdapter(ExchangeInterface):
 
                 rates[base_symbol] = FundingRate(
                     symbol=base_symbol,
-                    rate=float(item.get('lastFundingRate', 0)) * norm_factor, # Normalize to 8h
+                    rate=float(item.get('lastFundingRate', 0)), # raw rate per interval
                     mark_price=float(item.get('markPrice', 0)),
                     source=self.get_name(),
                     timestamp=int(time.time() * 1000),

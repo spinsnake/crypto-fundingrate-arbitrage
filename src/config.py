@@ -27,8 +27,8 @@ ASTERDEX_TAKER_FEE = 0.05  # 0.05% base taker
 HYPERLIQUID_TAKER_FEE = 0.045  # 0.045% base taker
 LIGHTER_TAKER_FEE = 0.0  # Fallback if API fee missing (percent)
 SLIPPAGE_BPS = 15  # per leg slippage allowance in bps (0.015%); buffer for altcoins
-DEFAULT_LEVERAGE = 1  # desired leverage per leg
-MAX_BREAK_EVEN_ROUNDS = 1 # Max rounds (8h each) to wait for break-even. 1 = must profit in 1st round.
+DEFAULT_LEVERAGE = 2  # desired leverage per leg
+MAX_BREAK_EVEN_ROUNDS = 3 # Max rounds (8h each) to wait for break-even. 1 = must profit in 1st round.
 MIN_PRICE_SPREAD_PCT = 0.2  # Minimum favorable price edge between exchanges (0.2%)
 REBALANCE_FIXED_COST_USDC = 1.6  # Flat cost per rebalance transfer (withdraw+gas+deposit)
 

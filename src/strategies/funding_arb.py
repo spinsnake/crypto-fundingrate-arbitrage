@@ -88,8 +88,19 @@ class FundingArbitrageStrategy(StrategyInterface):
                     )
                     continue
                 
-            # Calculate Spread
-            diff = abs(ex_a.rate - ex_b.rate)
+            interval_a = getattr(ex_a, "funding_interval_hours", 8) or 8
+            interval_b = getattr(ex_b, "funding_interval_hours", 8) or 8
+            round_hours = max(interval_a, interval_b)
+
+            def _rate_per_round(rate: float, interval: int) -> float:
+                if interval <= 0:
+                    return rate
+                return rate * (round_hours / interval)
+
+            # Calculate spread using the real funding intervals
+            rate_a_round = _rate_per_round(ex_a.rate, interval_a)
+            rate_b_round = _rate_per_round(ex_b.rate, interval_b)
+            diff_round = abs(rate_a_round - rate_b_round)
 
             # Price edge (mark price difference)
             price_a = ex_a.mark_price
@@ -105,12 +116,13 @@ class FundingArbitrageStrategy(StrategyInterface):
             # Slippage allowance per round (approx 4 legs * slippage_bps)
             slippage_cost = (SLIPPAGE_BPS / 10000) * 4
 
-            # Net per 8h round after fees (conservative: fee charged once per open+close)
-            net_per_round = diff - fee_per_rotation - slippage_cost
+            # Net per round after fees (round = max interval)
+            net_per_round = diff_round - fee_per_rotation - slippage_cost
             
             # Project Returns for HOLDING strategy:
-            # Revenue = Spread * 90 rounds (30 days), Cost = Fee + Slippage (paid once)
-            monthly_revenue = diff * 90
+            # Revenue = spread per round * rounds per month, Cost = Fee + Slippage (paid once)
+            rounds_per_month = (24 * 30) / round_hours if round_hours else 0
+            monthly_revenue = diff_round * rounds_per_month
             monthly_net = monthly_revenue - (fee_per_rotation + slippage_cost)
             
             # Filter by per-round net (we target positive net per round)
@@ -118,21 +130,21 @@ class FundingArbitrageStrategy(StrategyInterface):
             # We want to see if we can break even within MAX_BREAK_EVEN_ROUNDS
             # Total Cost (Fee + Slippage) <= Spread * Rounds
             
-            # Note: "net_per_round" variable above is calculated as (diff - fee - slippage), 
+            # Note: "net_per_round" variable above is calculated as (diff_round - fee - slippage),
             # which assumes 1 round. If net_per_round > 0, it means we break even in < 1 round.
             
             # If we allow more rounds, we need to check:
-            # (diff * MAX_BREAK_EVEN_ROUNDS) - fee_per_rotation - slippage_cost > 0
+            # (diff_round * MAX_BREAK_EVEN_ROUNDS) - fee_per_rotation - slippage_cost > 0
             # or equivalently: revenue_over_horizon > total_cost
             
-            potential_revenue = diff * MAX_BREAK_EVEN_ROUNDS
+            potential_revenue = diff_round * MAX_BREAK_EVEN_ROUNDS
             total_cost = fee_per_rotation + slippage_cost
             net_over_horizon = potential_revenue - total_cost
 
             if net_over_horizon <= 0 and not is_watched:
                  log_skip(
                     symbol,
-                    f"net<=0 (max {MAX_BREAK_EVEN_ROUNDS} rnds): spread={diff:.6f} cost={total_cost:.6f} net_horizon={net_over_horizon:.6f}"
+                    f"net<=0 (max {MAX_BREAK_EVEN_ROUNDS} rnds): spread={diff_round:.6f} cost={total_cost:.6f} net_horizon={net_over_horizon:.6f}"
                 )
                  continue
             
@@ -141,17 +153,18 @@ class FundingArbitrageStrategy(StrategyInterface):
                 warning_msg = "⚠️ WARNING: Net Profit is NEGATIVE!"
                 
             # Determine Direction
-            if ex_b.rate > ex_a.rate:
+            if rate_b_round > rate_a_round:
                 # Short ex_b (Receive High), Long ex_a (Pay Low)
                 direction = f"LONG_{_direction_key(ex_a_name)}_SHORT_{_direction_key(ex_b_name)}"
                 exchange_long = ex_a_name
                 exchange_short = ex_b_name
+                net_rate_per_round = rate_b_round - rate_a_round
             else:
                 # Short ex_a (Receive High), Long ex_b (Pay Low)
                 direction = f"LONG_{_direction_key(ex_b_name)}_SHORT_{_direction_key(ex_a_name)}"
                 exchange_long = ex_b_name
                 exchange_short = ex_a_name
-
+                net_rate_per_round = rate_a_round - rate_b_round
             # Require a favorable price edge so convergence helps PnL
             price_edge_pct = 0.0
             if mid_price > 0:
@@ -176,15 +189,12 @@ class FundingArbitrageStrategy(StrategyInterface):
             next_payout = max(ex_a.next_funding_time, ex_b.next_funding_time)
 
             # Calculate Break-Even Rounds (Fee / Spread)
-            # Avoid division by zero and handle negative net
-            # Calculate Break-Even Rounds (Fee / Spread)
-            # Avoid division by zero
-            if diff > 0:
+            if diff_round > 0:
                  # Rounds needed to cover total cost
                  # Cost = Fee + Slippage
-                 # Revenue per round = diff
-                 # Rounds = Cost / diff
-                 rounds_needed = (fee_per_rotation + slippage_cost) / diff
+                 # Revenue per round = diff_round
+                 # Rounds = Cost / diff_round
+                 rounds_needed = (fee_per_rotation + slippage_cost) / diff_round
                  
                  # If rounds_needed < 1, it means we profit in first round.
                  # If rounds_needed is 1.5, we break even in 2nd round.
@@ -197,7 +207,7 @@ class FundingArbitrageStrategy(StrategyInterface):
                 direction=direction,
                 exchange_long=exchange_long,
                 exchange_short=exchange_short,
-                spread=diff,
+                spread=diff_round,
                 spread_net=net_per_round,
                 round_return_net=net_per_round,
                 projected_monthly_return=monthly_net,

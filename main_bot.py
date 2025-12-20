@@ -1,5 +1,6 @@
 import time
 import sys
+import math
 from src.adapters.asterdex import AsterdexAdapter
 from src.adapters.hyperliquid import HyperliquidAdapter
 from src.adapters.lighter import LighterAdapter
@@ -365,7 +366,6 @@ def main():
 
                     icon = "👀 WATCH" if top_signal.is_watchlist else "📣 SIG"
                     warning_text = f" | {top_signal.warning}" if top_signal.warning else ""
-                    hold_hours = top_signal.break_even_rounds * 8
                     price_edge_pct = top_signal.price_spread_pct * 100
                     price_line = (
                         f"💵 Price edge: {price_edge_pct:.4f}% "
@@ -389,38 +389,39 @@ def main():
                     interval_a = getattr(rate_obj_a, "funding_interval_hours", 8) if rate_obj_a else 8
                     interval_b = getattr(rate_obj_b, "funding_interval_hours", 8) if rate_obj_b else 8
                     round_hours = max(interval_a or 8, interval_b or 8)
-                    round_return_net = None
-                    if round_hours != 8:
-                        fee_per_rotation = ESTIMATED_FEE_PER_ROTATION / 100
-                        taker_a = getattr(rate_obj_a, "taker_fee", 0.0) if rate_obj_a else 0.0
-                        taker_b = getattr(rate_obj_b, "taker_fee", 0.0) if rate_obj_b else 0.0
-                        if taker_a or taker_b:
-                            fee_per_rotation = (taker_a + taker_b) * 2
-                        slippage_cost = (SLIPPAGE_BPS / 10000) * 4
-                        diff_round = top_signal.spread * (round_hours / 8)
-                        round_return_net = diff_round - fee_per_rotation - slippage_cost
+                    fee_per_rotation = ESTIMATED_FEE_PER_ROTATION / 100
+                    taker_a = getattr(rate_obj_a, "taker_fee", 0.0) if rate_obj_a else 0.0
+                    taker_b = getattr(rate_obj_b, "taker_fee", 0.0) if rate_obj_b else 0.0
+                    if taker_a or taker_b:
+                        fee_per_rotation = (taker_a + taker_b) * 2
+                    slippage_cost = (SLIPPAGE_BPS / 10000) * 4
+                    diff_round = top_signal.spread
+                    round_return_net = top_signal.round_return_net
+                    break_even_hours = None
+                    if diff_round > 0:
+                        break_even_rounds = math.ceil((fee_per_rotation + slippage_cost) / diff_round)
+                        break_even_hours = break_even_rounds * round_hours
+                    break_even_text = "N/A"
+                    if break_even_hours is not None:
+                        break_even_text = f"{break_even_hours}h"
 
                     separator = "━━━━━━━━━━━━"
                     msg_lines = [
                         f"🔔 {icon} {top_signal.symbol}{warning_text}",
                         separator,
                         f"📅 Monthly Return (net): {top_signal.projected_monthly_return*100:.2f}%",
-                        f"📊 Spread 8h (net of fees): {top_signal.spread_net*100:.4f}%",
-                        f"💫 Round Return (after fees): {top_signal.round_return_net*100:.4f}%",
+                        f"📊 Spread {round_hours}h (net of fees): {top_signal.spread_net*100:.4f}%",
+                        f"💫 Round Return ({round_hours}h after fees): {round_return_net*100:.4f}%",
                         price_line,
-                        "💱 Rates (8h):",
-                        f"  • {ex_a_name}: {rate_a*100:.4f}% ({ex_a_action})",
-                        f"  • {ex_b_name}: {rate_b*100:.4f}% ({ex_b_action})",
-                        f"⏳ Min Hold: {top_signal.break_even_rounds} rounds (~{hold_hours}h) to break even",
+                        "💱 Rates (interval):",
+                        f"  • {ex_a_name}: {rate_a*100:.4f}% ({interval_a}h, {ex_a_action})",
+                        f"  • {ex_b_name}: {rate_b*100:.4f}% ({interval_b}h, {ex_b_action})",
+                        f"⏳ Min Hold: {break_even_text} to break even",
                         f"🕰️ {ex_a_name} Payout: in {ex_a_mins_left} mins ({ex_a_bkk} BKK)",
                         f"🕰️ {ex_b_name} Payout: in {ex_b_mins_left} mins ({ex_b_bkk} BKK)",
                         f"🎯 Action: {top_signal.direction}",
                         f"   (Long {top_signal.exchange_long} / Short {top_signal.exchange_short})",
                     ]
-                    if round_return_net is not None:
-                        msg_lines.insert(
-                            5, f"Round Return ({round_hours}h after fees): {round_return_net*100:.4f}%"
-                        )
                     live_section_text = live_sections.get(top_signal.symbol)
                     if live_section_text:
                         msg_lines.append(separator)

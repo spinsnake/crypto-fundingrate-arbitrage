@@ -20,11 +20,11 @@ class Signal:
     direction: str  # "LONG_A_SHORT_B" or "LONG_B_SHORT_A"
     exchange_long: str
     exchange_short: str
-    spread: float  # raw spread per 8h (no fee)
+    spread: float  # spread per round (max interval)
     projected_monthly_return: float
     timestamp: int
     next_funding_time: int
-    spread_net: float = 0.0  # net per 8h after fees (one round)
+    spread_net: float = 0.0  # net per round after fees
     round_return_net: float = 0.0  # alias for net per round after fees
     is_watchlist: bool = False
     warning: str = ""

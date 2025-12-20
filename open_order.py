@@ -57,6 +57,19 @@ def within_window_bkk(window_minutes: int = 30) -> tuple[bool, float, str]:
     return 0 <= diff_minutes <= window_minutes, diff_minutes, next_dt.strftime("%H:%M")
 
 
+def _has_open_position(exchange, symbol: str) -> bool:
+    try:
+        positions = exchange.get_open_positions()
+    except Exception as e:
+        print(f"[Open] {exchange.get_name()} get_open_positions failed: {e}")
+        return False
+    sym = symbol.upper()
+    for pos in positions:
+        if str(pos.get("symbol", "")).upper() == sym and float(pos.get("quantity", 0) or 0) > 0:
+            return True
+    return False
+
+
 def main():
     ok, mins, target_str = within_window_bkk()
     # if not ok:
@@ -74,6 +87,10 @@ def main():
     exchange_short = exchanges[short_key]
     long_name = exchange_long.get_name()
     short_name = exchange_short.get_name()
+
+    if _has_open_position(exchange_long, SYMBOL) or _has_open_position(exchange_short, SYMBOL):
+        print(f"[Open] {SYMBOL} already open on {long_name} or {short_name}. Skipping.")
+        return
 
     # Auto-calc notional per leg from balances (use min equity across exchanges)
     bal_long = exchange_long.get_balance()
