@@ -106,6 +106,7 @@ class HyperliquidAdapter(ExchangeInterface):
         leverage = order.leverage or self.leverage
         qty = self._quantize_size(order.symbol, order.quantity)
         px = self._quantize_price(order.symbol, order.price) if order.price else None
+        reduce_only = bool(getattr(order, "reduce_only", False))
 
         try:
             if hasattr(self._exchange, "update_leverage"):
@@ -120,7 +121,7 @@ class HyperliquidAdapter(ExchangeInterface):
                 qty,
                 px if order.type.upper() == "LIMIT" else None,
                 tif,
-                reduce_only=False,
+                reduce_only=reduce_only,
             )
             return resp
         except Exception as e:

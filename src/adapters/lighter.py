@@ -355,6 +355,7 @@ class LighterAdapter(ExchangeInterface):
         order_type = self._signer_client.ORDER_TYPE_LIMIT
         time_in_force = self._signer_client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME
         order_expiry = self._signer_client.DEFAULT_28_DAY_ORDER_EXPIRY
+        reduce_only = bool(getattr(order, "reduce_only", False))
         if order.type and order.type.upper() == "MARKET":
             order_type = self._signer_client.ORDER_TYPE_MARKET
             time_in_force = self._signer_client.ORDER_TIME_IN_FORCE_IMMEDIATE_OR_CANCEL
@@ -377,7 +378,7 @@ class LighterAdapter(ExchangeInterface):
                 int(is_ask),
                 order_type,
                 time_in_force,
-                False,
+                reduce_only,
                 self._signer_client.NIL_TRIGGER_PRICE,
                 order_expiry,
                 nonce=nonce,

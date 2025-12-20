@@ -74,10 +74,26 @@ class ExecutionManager:
             return {"status": "error", "reason": "Invalid book prices"}
 
         res_close_long = exchange_long.place_order(
-            Order(symbol=symbol, side="SELL", quantity=qty_long, price=sell_price, type="LIMIT", leverage=self.leverage)
+            Order(
+                symbol=symbol,
+                side="SELL",
+                quantity=qty_long,
+                price=sell_price,
+                type="LIMIT",
+                leverage=self.leverage,
+                reduce_only=True,
+            )
         )
         res_close_short = exchange_short.place_order(
-            Order(symbol=symbol, side="BUY", quantity=qty_short, price=buy_price, type="LIMIT", leverage=self.leverage)
+            Order(
+                symbol=symbol,
+                side="BUY",
+                quantity=qty_short,
+                price=buy_price,
+                type="LIMIT",
+                leverage=self.leverage,
+                reduce_only=True,
+            )
         )
         
         # Calculate Realized Funding

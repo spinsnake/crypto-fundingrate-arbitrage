@@ -53,3 +53,4 @@ class Order:
     price: Optional[float] = None
     type: str = "MARKET"
     leverage: float = 1.0
+    reduce_only: bool = False

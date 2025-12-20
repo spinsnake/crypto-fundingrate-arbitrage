@@ -117,7 +117,14 @@ def main():
             continue
 
         res = exchange_obj.place_order(
-            Order(symbol=symbol, side=target_side, quantity=qty, price=price, type="LIMIT")
+            Order(
+                symbol=symbol,
+                side=target_side,
+                quantity=qty,
+                price=price,
+                type="LIMIT",
+                reduce_only=True,
+            )
         )
         summary[exchange].append(res)
         close_price = price

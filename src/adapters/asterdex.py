@@ -186,6 +186,8 @@ class AsterdexAdapter(ExchangeInterface):
             "timestamp": timestamp,
             "recvWindow": 5000,
         }
+        if bool(getattr(order, "reduce_only", False)):
+            params["reduceOnly"] = "true"
         if order.type.upper() == "LIMIT":
             params["price"] = px
             params["timeInForce"] = "GTC"
