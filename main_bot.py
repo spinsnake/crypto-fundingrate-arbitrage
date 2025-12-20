@@ -18,6 +18,8 @@ from src.config import (
     REBALANCE_FIXED_COST_USDC,
     DISCORD_ALERT_INTERVAL,
     SLIPPAGE_BPS,
+    DEFAULT_LEVERAGE,
+    SAFETY_BUFFER,
 )
 from src.core.execution_manager import ExecutionManager
 from src.utils.time_helper import TimeHelper
@@ -78,6 +80,8 @@ def main():
                 other_signals = [s for s in signals if not s.is_watchlist]
                 final_signals = watchlist_signals + other_signals
                 live_sections = {}
+                live_horizon_returns = {}
+                live_costs = {}
 
                 # --- Live PnL for Watchlist (also used for alerts) ---
                 positions_by_exchange = {}
@@ -150,14 +154,13 @@ def main():
 
                         curr_px_long = 0.0
                         curr_px_short = 0.0
+                        entry_px_long = float(trade.get("Long_Price", 0) or 0)
+                        qty_long = float(trade.get("Long_Qty", 0) or 0)
+                        entry_px_short = float(trade.get("Short_Price", 0) or 0)
+                        qty_short = float(trade.get("Short_Qty", 0) or 0)
                         if rate_long and rate_short:
                             curr_px_long = rate_long.mark_price
                             curr_px_short = rate_short.mark_price
-
-                            entry_px_long = float(trade["Long_Price"])
-                            qty_long = float(trade["Long_Qty"])
-                            entry_px_short = float(trade["Short_Price"])
-                            qty_short = float(trade["Short_Qty"])
 
                             pos_long = positions_by_exchange.get(ex_long_name, {}).get(symbol)
                             pos_short = positions_by_exchange.get(ex_short_name, {}).get(symbol)
@@ -300,6 +303,55 @@ def main():
                         print(f"   -----------------------------------------")
                         net_icon = "\U0001F7E2" if net_pnl >= 0 else "\U0001F534"
                         print(f"   [NET ] {net_icon} {net_pnl:+.4f} USDT")
+                        held_hours = 0.0
+                        rounds_held = 0.0
+                        interval_long = getattr(rate_long, "funding_interval_hours", 8) if rate_long else 8
+                        interval_short = getattr(rate_short, "funding_interval_hours", 8) if rate_short else 8
+                        round_hours = max(interval_long or 8, interval_short or 8)
+                        if start_time > 0 and round_hours > 0:
+                            held_hours = max(0.0, (now_ms - start_time) / 3600000)
+                            rounds_held = held_hours / round_hours
+                        print(f"   [HOLD] {rounds_held:.2f} rounds (~{held_hours:.2f}h)")
+                        fund_24h_gross = None
+                        fund_7d_gross = None
+                        fund_30d_gross = None
+                        fund_24h = None
+                        fund_7d = None
+                        fund_30d = None
+                        one_time_cost = None
+                        one_time_cost_note = "LIVE"
+                        notional_long = abs(entry_px_long * qty_long) if entry_px_long and qty_long else 0.0
+                        notional_short = abs(entry_px_short * qty_short) if entry_px_short and qty_short else 0.0
+                        notional_total = notional_long + notional_short
+                        position_value = notional_total / 2 if notional_total > 0 else 0.0
+                        if notional_total > 0 and rate_long and rate_short and interval_long and interval_short:
+                            rate_long_per_hour = 0.0
+                            rate_short_per_hour = 0.0
+                            if rate_long and interval_long:
+                                rate_long_per_hour = rate_long.rate / interval_long
+                            if rate_short and interval_short:
+                                rate_short_per_hour = rate_short.rate / interval_short
+
+                            # Long pays positive funding, receives negative; short is the inverse.
+                            funding_per_hour = (
+                                (-rate_long_per_hour * notional_long)
+                                + (rate_short_per_hour * notional_short)
+                            )
+
+                            fund_24h_gross = funding_per_hour * 24
+                            fund_7d_gross = funding_per_hour * 24 * 7
+                            fund_30d_gross = funding_per_hour * 24 * 30
+
+                        one_time_cost = total_costs - price_pnl_slip
+                        if fund_24h_gross is not None:
+                            fund_24h = fund_24h_gross - one_time_cost
+                            fund_7d = fund_7d_gross - one_time_cost
+                            fund_30d = fund_30d_gross - one_time_cost
+                            print(f"   [FUND24] {fund_24h:+.4f} USDT (net)")
+                            print(f"   [FUND7D] {fund_7d:+.4f} USDT (net)")
+                            print(f"   [FUND30] {fund_30d:+.4f} USDT (net)")
+                        if one_time_cost is not None:
+                            print(f"   [COST] {one_time_cost:+.4f} USDT (1 time)")
                         if auto_close_hit or drawdown_hit:
                             try:
                                 ex_long_obj = exchange_by_name.get(ex_long_name)
@@ -338,11 +390,39 @@ def main():
                             f"   • BAL: {total_equity:.4f} USDT ({ex_long_name} {bal_long:.4f}, {ex_short_name} {bal_short:.4f}, {equity_source})",
                             f"   • RET: {ret_icon} {ret_pct:+.4f}% of equity",
                         ]
+                        if one_time_cost is not None:
+                            live_section_lines.append(f"   1 Time Cost: {one_time_cost:+.4f} USDT")
                         if leg_text:
                             live_section_lines.append(f"   • LEG: {leg_text}")
                         live_section_lines.append(f"   • NET: {net_icon} {net_pnl:+.4f} USDT")
+                        live_section_lines.append(f"   • HOLD: {rounds_held:.2f} rounds (~{held_hours:.2f}h)")
+                        if fund_24h is not None:
+                            live_section_lines.append(f"   • FUND24: {fund_24h:+.4f} USDT")
+                            live_section_lines.append(f"   • FUND7D: {fund_7d:+.4f} USDT")
+                            live_section_lines.append(f"   • FUND30: {fund_30d:+.4f} USDT")
+                        else:
+                            live_section_lines.append("   • FUND24: N/A")
+                            live_section_lines.append("   • FUND7D: N/A")
+                            live_section_lines.append("   • FUND30: N/A")
                         live_section_lines.append(f"   • Open since {start_time_str}")
                         live_sections[symbol] = "\n".join(live_section_lines)
+                        live_costs[symbol] = {
+                            "one_time_cost": one_time_cost,
+                            "one_time_cost_note": one_time_cost_note,
+                            "position_value": position_value,
+                            "notional_long": notional_long,
+                            "notional_short": notional_short,
+                            "total_equity": total_equity,
+                            "bal_long": bal_long,
+                            "bal_short": bal_short,
+                            "equity_source": equity_source,
+                        }
+                        if fund_24h is not None:
+                            live_horizon_returns[symbol] = {
+                                "24h": fund_24h,
+                                "7d": fund_7d,
+                                "30d": fund_30d,
+                            }
                     except Exception as e:
                         print(f"[Live PnL] Error for {symbol}: {e}")
 
@@ -364,11 +444,11 @@ def main():
                     ex_b_mins_left = TimeHelper.ms_to_mins_remaining(payout_b)
                     ex_b_bkk = TimeHelper.ms_to_bkk_str(payout_b)
 
-                    icon = "👀 WATCH" if top_signal.is_watchlist else "📣 SIG"
+                    icon = "WATCH" if top_signal.is_watchlist else "SIG"
                     warning_text = f" | {top_signal.warning}" if top_signal.warning else ""
                     price_edge_pct = top_signal.price_spread_pct * 100
                     price_line = (
-                        f"💵 Price edge: {price_edge_pct:.4f}% "
+                        f"Price edge: {price_edge_pct:.4f}% "
                         f"({ex_a_name} {price_a:.4f} / {ex_b_name} {price_b:.4f})"
                     )
 
@@ -384,11 +464,17 @@ def main():
 
                     ex_a_action = funding_action(ex_a_name)
                     ex_b_action = funding_action(ex_b_name)
+
                     rate_obj_a = market_data.get(top_signal.symbol, {}).get(ex_a_name)
                     rate_obj_b = market_data.get(top_signal.symbol, {}).get(ex_b_name)
                     interval_a = getattr(rate_obj_a, "funding_interval_hours", 8) if rate_obj_a else 8
                     interval_b = getattr(rate_obj_b, "funding_interval_hours", 8) if rate_obj_b else 8
-                    round_hours = max(interval_a or 8, interval_b or 8)
+
+                    rate_obj_by_name = {ex_a_name: rate_obj_a, ex_b_name: rate_obj_b}
+                    interval_long = getattr(rate_obj_by_name.get(top_signal.exchange_long), "funding_interval_hours", 8)
+                    interval_short = getattr(rate_obj_by_name.get(top_signal.exchange_short), "funding_interval_hours", 8)
+                    round_hours = max(interval_long or 8, interval_short or 8)
+
                     fee_per_rotation = ESTIMATED_FEE_PER_ROTATION / 100
                     taker_a = getattr(rate_obj_a, "taker_fee", 0.0) if rate_obj_a else 0.0
                     taker_b = getattr(rate_obj_b, "taker_fee", 0.0) if rate_obj_b else 0.0
@@ -396,7 +482,7 @@ def main():
                         fee_per_rotation = (taker_a + taker_b) * 2
                     slippage_cost = (SLIPPAGE_BPS / 10000) * 4
                     diff_round = top_signal.spread
-                    round_return_net = top_signal.round_return_net
+
                     break_even_hours = None
                     if diff_round > 0:
                         break_even_rounds = math.ceil((fee_per_rotation + slippage_cost) / diff_round)
@@ -405,23 +491,114 @@ def main():
                     if break_even_hours is not None:
                         break_even_text = f"{break_even_hours}h"
 
-                    separator = "━━━━━━━━━━━━"
+                    # Equity / position estimate
+                    bal_a = balances_by_exchange.get(ex_a_name, 0.0)
+                    bal_b = balances_by_exchange.get(ex_b_name, 0.0)
+                    total_equity = (bal_a or 0) + (bal_b or 0)
+
+                    live_cost = live_costs.get(top_signal.symbol)
+                    notional_long = 0.0
+                    notional_short = 0.0
+                    position_value = 0.0
+                    if live_cost:
+                        notional_long = live_cost.get("notional_long", 0.0)
+                        notional_short = live_cost.get("notional_short", 0.0)
+                        position_value = live_cost.get("position_value", 0.0)
+                        total_equity = total_equity or live_cost.get("total_equity", 0.0)
+
+                    if position_value <= 0:
+                        trade = execu.get_last_open_trade(top_signal.symbol)
+                        if trade:
+                            open_notional = float(trade.get("Est_Total_Notional", 0) or 0)
+                            if open_notional > 0:
+                                position_value = open_notional / 2
+                                notional_long = position_value
+                                notional_short = position_value
+
+                    if position_value <= 0 and bal_a > 0 and bal_b > 0:
+                        position_value = min(bal_a, bal_b) * SAFETY_BUFFER * DEFAULT_LEVERAGE
+                        notional_long = position_value
+                        notional_short = position_value
+
+                    if notional_long <= 0:
+                        notional_long = position_value
+                    if notional_short <= 0:
+                        notional_short = position_value
+
+                    rate_long_val = rate_by_exchange.get(top_signal.exchange_long, 0.0)
+                    rate_short_val = rate_by_exchange.get(top_signal.exchange_short, 0.0)
+                    rate_long_round = rate_long_val * (round_hours / interval_long) if interval_long else rate_long_val
+                    rate_short_round = rate_short_val * (round_hours / interval_short) if interval_short else rate_short_val
+                    spread_round = (-rate_long_round) + (rate_short_round)
+                    spread_pct = spread_round * 100
+
+                    one_time_cost = None
+                    one_time_cost_note = ""
+                    if live_cost:
+                        one_time_cost = live_cost.get("one_time_cost")
+                        one_time_cost_note = live_cost.get("one_time_cost_note", "LIVE")
+
+                    if one_time_cost is None and position_value > 0:
+                        total_notional = position_value * 2
+                        one_time_cost = total_notional * (fee_per_rotation + slippage_cost) + REBALANCE_FIXED_COST_USDC
+                        one_time_cost_note = "EST"
+
+                    cost_text = "N/A"
+                    if one_time_cost is not None:
+                        cost_text = f"{one_time_cost:+.4f} USDT"
+                        if one_time_cost_note:
+                            cost_text += f" ({one_time_cost_note})"
+
+                    fund_24h_text = "N/A"
+                    fund_7d_text = "N/A"
+                    fund_30d_text = "N/A"
+                    if position_value > 0 and interval_long and interval_short:
+                        funding_per_hour = (
+                            (-rate_long_val / interval_long) * (notional_long or 0.0)
+                            + (rate_short_val / interval_short) * (notional_short or 0.0)
+                        )
+                        fund_24h_gross = funding_per_hour * 24
+                        fund_7d_gross = funding_per_hour * 24 * 7
+                        fund_30d_gross = funding_per_hour * 24 * 30
+                        if one_time_cost is not None:
+                            fund_24h_net = fund_24h_gross - one_time_cost
+                            fund_7d_net = fund_7d_gross - one_time_cost
+                            fund_30d_net = fund_30d_gross - one_time_cost
+                            if total_equity > 0:
+                                fund_24h_text = f"{fund_24h_net:+.4f} USDT ({(fund_24h_net/total_equity)*100:+.2f}%)"
+                                fund_7d_text = f"{fund_7d_net:+.4f} USDT ({(fund_7d_net/total_equity)*100:+.2f}%)"
+                                fund_30d_text = f"{fund_30d_net:+.4f} USDT ({(fund_30d_net/total_equity)*100:+.2f}%)"
+                            else:
+                                fund_24h_text = f"{fund_24h_net:+.4f} USDT"
+                                fund_7d_text = f"{fund_7d_net:+.4f} USDT"
+                                fund_30d_text = f"{fund_30d_net:+.4f} USDT"
+
+                    separator = "-" * 38
+                    position_text = "N/A" if position_value <= 0 else f"{position_value:.2f} USDT"
                     msg_lines = [
-                        f"🔔 {icon} {top_signal.symbol}{warning_text}",
+                        f"{icon} {top_signal.symbol}{warning_text}",
                         separator,
-                        f"📅 Monthly Return (net): {top_signal.projected_monthly_return*100:.2f}%",
-                        f"📊 Spread {round_hours}h (net of fees): {top_signal.spread_net*100:.4f}%",
-                        f"💫 Round Return ({round_hours}h after fees): {round_return_net*100:.4f}%",
-                        price_line,
+                        "💼 Equity:",
+                        f"   {ex_a_name}: {bal_a:.4f} USDT",
+                        f"   {ex_b_name}: {bal_b:.4f} USDT",
+                        f"⚖️ Leverage: {DEFAULT_LEVERAGE}x",
+                        f"📊 Position Value: {position_text}",
                         "💱 Rates (interval):",
                         f"  • {ex_a_name}: {rate_a*100:.4f}% ({interval_a}h, {ex_a_action})",
                         f"  • {ex_b_name}: {rate_b*100:.4f}% ({interval_b}h, {ex_b_action})",
+                        f"  • Spread: {spread_pct:+.4f}% ({round_hours}h)",
+                        f"💸 1 Time Cost: {cost_text}",
+                        f"📅 24H Funding: {fund_24h_text}",
+                        f"📅 7D Funding: {fund_7d_text}",
+                        f"📅 30D Funding: {fund_30d_text}",
+                        f"💵 {price_line}",
                         f"⏳ Min Hold: {break_even_text} to break even",
                         f"🕰️ {ex_a_name} Payout: in {ex_a_mins_left} mins ({ex_a_bkk} BKK)",
                         f"🕰️ {ex_b_name} Payout: in {ex_b_mins_left} mins ({ex_b_bkk} BKK)",
                         f"🎯 Action: {top_signal.direction}",
                         f"   (Long {top_signal.exchange_long} / Short {top_signal.exchange_short})",
                     ]
+
                     live_section_text = live_sections.get(top_signal.symbol)
                     if live_section_text:
                         msg_lines.append(separator)
@@ -455,6 +632,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 

@@ -9,11 +9,6 @@ HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
 LIGHTER_API_URL = "https://mainnet.zklighter.elliot.ai"
 
 # Strategy Settings (percent scale, e.g., 2 = 2%)
-MIN_MONTHLY_RETURN = 2.0  # Minimum projected monthly return (%)
-TARGET_MONTHLY_RETURN = 4.0  # Used by funding_scanner (default goal, %)
-MIN_SPREAD_PER_ROUND = 0.2 # 0.2% per round (max interval)
-MIN_VOLUME_ASTER_USDT = 1000 # Daily Volume filter for Asterdex
-MIN_VOLUME_HL_USDT = 500000    # Daily Volume filter for Hyperliquid
 LIGHTER_MARKET_STYLE = "mid"  # "major", "mid", "alt", "micro"
 LIGHTER_VOLUME_PRESETS = {
     "major": 1000000,  # focus on majors only
@@ -21,15 +16,34 @@ LIGHTER_VOLUME_PRESETS = {
     "alt": 50000,      # higher risk/altcoins
     "micro": 10000,    # long tail / experimental
 }
-MIN_VOLUME_LIGHTER_USDT = LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 50000)
+# Scan thresholds (JSON-like dict for readability)
+SCAN_THRESHOLDS = {
+    "min_monthly_return_pct": 2.0,  # Minimum projected monthly return (%)
+    "target_monthly_return_pct": 4.0,  # Default goal for scanner (%)
+    "min_spread_per_round_pct": 0.2,  # 0.2% per round (max interval)
+    "min_volume_aster_usdt": 1000,  # Daily volume filter for Asterdex
+    "min_volume_hl_usdt": 500000,  # Daily volume filter for Hyperliquid
+    "min_volume_lighter_usdt": LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 50000),
+    "min_price_spread_pct": 0.2,  # Minimum favorable price edge between exchanges (%)
+    "max_break_even_rounds": 20,  # Max rounds (based on max interval) to break even
+}
+
+# Backward-compatible aliases
+MIN_MONTHLY_RETURN = SCAN_THRESHOLDS["min_monthly_return_pct"]
+TARGET_MONTHLY_RETURN = SCAN_THRESHOLDS["target_monthly_return_pct"]
+MIN_SPREAD_PER_ROUND = SCAN_THRESHOLDS["min_spread_per_round_pct"]
+MIN_VOLUME_ASTER_USDT = SCAN_THRESHOLDS["min_volume_aster_usdt"]
+MIN_VOLUME_HL_USDT = SCAN_THRESHOLDS["min_volume_hl_usdt"]
+MIN_VOLUME_LIGHTER_USDT = SCAN_THRESHOLDS["min_volume_lighter_usdt"]
+MIN_PRICE_SPREAD_PCT = SCAN_THRESHOLDS["min_price_spread_pct"]
+MAX_BREAK_EVEN_ROUNDS = SCAN_THRESHOLDS["max_break_even_rounds"]
 ESTIMATED_FEE_PER_ROTATION = 0.2 # Fallback if fee data missing (% per rotation)
 ASTERDEX_TAKER_FEE = 0.05  # 0.05% base taker
 HYPERLIQUID_TAKER_FEE = 0.045  # 0.045% base taker
 LIGHTER_TAKER_FEE = 0.0  # Fallback if API fee missing (percent)
 SLIPPAGE_BPS = 15  # per leg slippage allowance in bps (0.015%); buffer for altcoins
 DEFAULT_LEVERAGE = 2  # desired leverage per leg
-MAX_BREAK_EVEN_ROUNDS = 10 # Max rounds (based on max interval) to break even.
-MIN_PRICE_SPREAD_PCT = 0.2  # Minimum favorable price edge between exchanges (0.2%)
+SAFETY_BUFFER = 0.9  # use 90% of min equity to leave margin buffer
 REBALANCE_FIXED_COST_USDC = 1.6  # Flat cost per rebalance transfer (withdraw+gas+deposit)
 
 
@@ -37,7 +51,7 @@ REBALANCE_FIXED_COST_USDC = 1.6  # Flat cost per rebalance transfer (withdraw+ga
 ENABLE_VOLUME_FILTER = True
 ENABLE_DELIST_FILTER = True
 ENABLE_PRICE_SPREAD_FILTER = True
-WATCHLIST = ["RESOLV"] # Symbols to monitor regardless of profit (e.g. ["HEMI", "ETH"])
+WATCHLIST = ["RESOLV"] # Symbols to monitor regardless of profit (e.g. ["RESOLV", "ETH"])
 SCAN_EXCHANGES = ["hyperliquid", "lighter"]  # Options: "hyperliquid", "asterdex", "lighter"
 
 # Execution Settings

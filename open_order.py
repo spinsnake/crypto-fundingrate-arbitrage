@@ -13,12 +13,11 @@ from src.adapters.asterdex import AsterdexAdapter  # noqa: E402
 from src.adapters.hyperliquid import HyperliquidAdapter  # noqa: E402
 from src.adapters.lighter import LighterAdapter  # noqa: E402
 from src.core.execution_manager import ExecutionManager  # noqa: E402
-from src.config import DEFAULT_LEVERAGE  # noqa: E402
+from src.config import DEFAULT_LEVERAGE, SAFETY_BUFFER  # noqa: E402
 
 SYMBOL = "RESOLV"
 # Fallback notional if balances not available
 NOTIONAL_FALLBACK = 560  # per leg in quote
-SAFETY_BUFFER = 0.9       # use 90% of min equity to leave margin buffer
 DIRECTION = "LONG_LIGHTER_SHORT_HL"  # See DIRECTION_MAP for options
 
 EXCHANGE_REGISTRY = {
