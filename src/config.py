@@ -9,9 +9,9 @@ HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
 LIGHTER_API_URL = "https://mainnet.zklighter.elliot.ai"
 
 # Strategy Settings (percent scale, e.g., 2 = 2%)
-MIN_MONTHLY_RETURN = 2.0  # (break even in 1 round)
-TARGET_MONTHLY_RETURN = 4.0  # Used by funding_scanner (default 4% goal)
-MIN_SPREAD_PER_ROUND = 0.2 # 0.2% per 8h
+MIN_MONTHLY_RETURN = 2.0  # Minimum projected monthly return (%)
+TARGET_MONTHLY_RETURN = 4.0  # Used by funding_scanner (default goal, %)
+MIN_SPREAD_PER_ROUND = 0.2 # 0.2% per round (max interval)
 MIN_VOLUME_ASTER_USDT = 1000 # Daily Volume filter for Asterdex
 MIN_VOLUME_HL_USDT = 500000    # Daily Volume filter for Hyperliquid
 LIGHTER_MARKET_STYLE = "mid"  # "major", "mid", "alt", "micro"
@@ -22,13 +22,13 @@ LIGHTER_VOLUME_PRESETS = {
     "micro": 10000,    # long tail / experimental
 }
 MIN_VOLUME_LIGHTER_USDT = LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 50000)
-ESTIMATED_FEE_PER_ROTATION = 0.2 # Fallback if fee data missing
+ESTIMATED_FEE_PER_ROTATION = 0.2 # Fallback if fee data missing (% per rotation)
 ASTERDEX_TAKER_FEE = 0.05  # 0.05% base taker
 HYPERLIQUID_TAKER_FEE = 0.045  # 0.045% base taker
 LIGHTER_TAKER_FEE = 0.0  # Fallback if API fee missing (percent)
 SLIPPAGE_BPS = 15  # per leg slippage allowance in bps (0.015%); buffer for altcoins
 DEFAULT_LEVERAGE = 2  # desired leverage per leg
-MAX_BREAK_EVEN_ROUNDS = 3 # Max rounds (8h each) to wait for break-even. 1 = must profit in 1st round.
+MAX_BREAK_EVEN_ROUNDS = 10 # Max rounds (based on max interval) to break even.
 MIN_PRICE_SPREAD_PCT = 0.2  # Minimum favorable price edge between exchanges (0.2%)
 REBALANCE_FIXED_COST_USDC = 1.6  # Flat cost per rebalance transfer (withdraw+gas+deposit)
 
