@@ -12,6 +12,7 @@ class FundingRate:
     next_funding_time: int = 0
     is_active: bool = True
     taker_fee: float = 0.0
+    funding_interval_hours: int = 8
 
 @dataclass
 class Signal:

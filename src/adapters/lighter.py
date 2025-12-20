@@ -1,4 +1,5 @@
 import ast
+import asyncio
 import json
 import os
 import time
@@ -120,6 +121,28 @@ class LighterAdapter(ExchangeInterface):
             idx = self.api_key_index if self.api_key_index is not None else 0
             return {idx: single_key}
         return {}
+
+    def _create_signer_client(self, account_index: int) -> Optional["SignerClient"]:
+        if SignerClient is None:
+            return None
+        try:
+            return SignerClient(
+                url=self.base_url,
+                account_index=account_index,
+                api_private_keys=self.api_private_keys,
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e).lower():
+                raise
+
+            async def _build():
+                return SignerClient(
+                    url=self.base_url,
+                    account_index=account_index,
+                    api_private_keys=self.api_private_keys,
+                )
+
+            return asyncio.run(_build())
 
     def _account_index_int(self) -> Optional[int]:
         if self.account_index:
@@ -264,6 +287,7 @@ class LighterAdapter(ExchangeInterface):
                 next_funding_time=next_hour,
                 is_active=str(detail.get("status", "")).lower() == "active",
                 taker_fee=taker_fee,
+                funding_interval_hours=1,
             )
         return rates
 
@@ -309,11 +333,9 @@ class LighterAdapter(ExchangeInterface):
 
         if self._signer_client is None:
             try:
-                self._signer_client = SignerClient(
-                    url=self.base_url,
-                    account_index=account_index,
-                    api_private_keys=self.api_private_keys,
-                )
+                self._signer_client = self._create_signer_client(account_index)
+                if self._signer_client is None:
+                    return {"status": "error", "error": "lighter_sdk_missing"}
                 err = self._signer_client.check_client()
                 if err:
                     print(f"[Lighter] check_client failed: {err}")

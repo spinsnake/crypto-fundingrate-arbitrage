@@ -93,7 +93,8 @@ class AsterdexAdapter(ExchangeInterface):
                     volume_24h=vol_map.get(symbol, 0.0),
                     next_funding_time=next_funding_time,
                     is_active=self.is_symbol_active(base_symbol),
-                    taker_fee=ASTERDEX_TAKER_FEE / 100  # store as decimal fraction
+                    taker_fee=ASTERDEX_TAKER_FEE / 100,  # store as decimal fraction
+                    funding_interval_hours=interval_hours,
                 )
             return rates
         except Exception as e:

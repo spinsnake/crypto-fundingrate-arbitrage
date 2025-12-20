@@ -77,7 +77,8 @@ class HyperliquidAdapter(ExchangeInterface):
                     volume_24h=float(ctx.get('dayNtlVlm', 0)),
                     next_funding_time=next_hour,
                     is_active=True,
-                    taker_fee=HYPERLIQUID_TAKER_FEE / 100  # store as decimal fraction
+                    taker_fee=HYPERLIQUID_TAKER_FEE / 100,  # store as decimal fraction
+                    funding_interval_hours=1,
                 )
             return rates
         except Exception as e:

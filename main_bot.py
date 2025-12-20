@@ -16,6 +16,7 @@ from src.config import (
     ESTIMATED_FEE_PER_ROTATION,
     REBALANCE_FIXED_COST_USDC,
     DISCORD_ALERT_INTERVAL,
+    SLIPPAGE_BPS,
 )
 from src.core.execution_manager import ExecutionManager
 from src.utils.time_helper import TimeHelper
@@ -383,6 +384,21 @@ def main():
 
                     ex_a_action = funding_action(ex_a_name)
                     ex_b_action = funding_action(ex_b_name)
+                    rate_obj_a = market_data.get(top_signal.symbol, {}).get(ex_a_name)
+                    rate_obj_b = market_data.get(top_signal.symbol, {}).get(ex_b_name)
+                    interval_a = getattr(rate_obj_a, "funding_interval_hours", 8) if rate_obj_a else 8
+                    interval_b = getattr(rate_obj_b, "funding_interval_hours", 8) if rate_obj_b else 8
+                    round_hours = max(interval_a or 8, interval_b or 8)
+                    round_return_net = None
+                    if round_hours != 8:
+                        fee_per_rotation = ESTIMATED_FEE_PER_ROTATION / 100
+                        taker_a = getattr(rate_obj_a, "taker_fee", 0.0) if rate_obj_a else 0.0
+                        taker_b = getattr(rate_obj_b, "taker_fee", 0.0) if rate_obj_b else 0.0
+                        if taker_a or taker_b:
+                            fee_per_rotation = (taker_a + taker_b) * 2
+                        slippage_cost = (SLIPPAGE_BPS / 10000) * 4
+                        diff_round = top_signal.spread * (round_hours / 8)
+                        round_return_net = diff_round - fee_per_rotation - slippage_cost
 
                     separator = "━━━━━━━━━━━━"
                     msg_lines = [
@@ -401,6 +417,10 @@ def main():
                         f"🎯 Action: {top_signal.direction}",
                         f"   (Long {top_signal.exchange_long} / Short {top_signal.exchange_short})",
                     ]
+                    if round_return_net is not None:
+                        msg_lines.insert(
+                            5, f"Round Return ({round_hours}h after fees): {round_return_net*100:.4f}%"
+                        )
                     live_section_text = live_sections.get(top_signal.symbol)
                     if live_section_text:
                         msg_lines.append(separator)
