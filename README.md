@@ -10,7 +10,7 @@
 ## Configure
 Edit `src/config.py`:
 - Percent scales use integer percent values (e.g., 4.0 = 4%, 0.2 = 0.2%):
-  - `MIN_MONTHLY_RETURN`, `TARGET_MONTHLY_RETURN`
+  - `SCAN_THRESHOLDS` (24h/7d/30d funding %, spread %, volume floors, price edge, break-even rounds)
   - `MIN_SPREAD_PER_ROUND`, `ESTIMATED_FEE_PER_ROTATION`
   - `ASTERDEX_TAKER_FEE`, `HYPERLIQUID_TAKER_FEE`
   - `MIN_PRICE_SPREAD_PCT`

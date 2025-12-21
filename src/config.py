@@ -18,19 +18,23 @@ LIGHTER_VOLUME_PRESETS = {
 }
 # Scan thresholds (JSON-like dict for readability)
 SCAN_THRESHOLDS = {
-    "min_monthly_return_pct": 2.0,  # Minimum projected monthly return (%)
-    "target_monthly_return_pct": 4.0,  # Default goal for scanner (%)
+    "min_24h_funding_pct": -2.0,  # 24h funding % of equity (net of 1-time cost)
+    "min_7d_funding_pct": 1.0,  # 7d funding % of equity (net of 1-time cost)
+    "min_30d_funding_pct": 2.0,  # 30d funding % of equity (net of 1-time cost)
     "min_spread_per_round_pct": 0.2,  # 0.2% per round (max interval)
     "min_volume_aster_usdt": 1000,  # Daily volume filter for Asterdex
     "min_volume_hl_usdt": 500000,  # Daily volume filter for Hyperliquid
     "min_volume_lighter_usdt": LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 50000),
     "min_price_spread_pct": 0.2,  # Minimum favorable price edge between exchanges (%)
-    "max_break_even_rounds": 20,  # Max rounds (based on max interval) to break even
+    "max_break_even_rounds": 100,  # Max rounds (based on max interval) to break even
 }
 
 # Backward-compatible aliases
-MIN_MONTHLY_RETURN = SCAN_THRESHOLDS["min_monthly_return_pct"]
-TARGET_MONTHLY_RETURN = SCAN_THRESHOLDS["target_monthly_return_pct"]
+MIN_24H_FUNDING_PCT = SCAN_THRESHOLDS["min_24h_funding_pct"]
+MIN_7D_FUNDING_PCT = SCAN_THRESHOLDS["min_7d_funding_pct"]
+MIN_30D_FUNDING_PCT = SCAN_THRESHOLDS["min_30d_funding_pct"]
+MIN_MONTHLY_RETURN = MIN_30D_FUNDING_PCT
+TARGET_MONTHLY_RETURN = MIN_30D_FUNDING_PCT
 MIN_SPREAD_PER_ROUND = SCAN_THRESHOLDS["min_spread_per_round_pct"]
 MIN_VOLUME_ASTER_USDT = SCAN_THRESHOLDS["min_volume_aster_usdt"]
 MIN_VOLUME_HL_USDT = SCAN_THRESHOLDS["min_volume_hl_usdt"]

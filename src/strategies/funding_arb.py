@@ -1,13 +1,28 @@
-﻿from typing import List, Dict
+from typing import List, Dict
 import time
 import math
 from ..core.interfaces import StrategyInterface
 from ..core.models import FundingRate, Signal
 from ..config import (
-    MIN_MONTHLY_RETURN, MIN_SPREAD_PER_ROUND, MIN_VOLUME_ASTER_USDT, MIN_VOLUME_HL_USDT,
-    MIN_VOLUME_LIGHTER_USDT, ESTIMATED_FEE_PER_ROTATION, ENABLE_VOLUME_FILTER, ENABLE_DELIST_FILTER, WATCHLIST,
-    SLIPPAGE_BPS, DEBUG_FILTER_LOG, MAX_BREAK_EVEN_ROUNDS,
-    MIN_PRICE_SPREAD_PCT, ENABLE_PRICE_SPREAD_FILTER, SCAN_EXCHANGES
+    MIN_MONTHLY_RETURN,
+    MIN_SPREAD_PER_ROUND,
+    MIN_VOLUME_ASTER_USDT,
+    MIN_VOLUME_HL_USDT,
+    MIN_VOLUME_LIGHTER_USDT,
+    ESTIMATED_FEE_PER_ROTATION,
+    ENABLE_VOLUME_FILTER,
+    ENABLE_DELIST_FILTER,
+    WATCHLIST,
+    SLIPPAGE_BPS,
+    DEBUG_FILTER_LOG,
+    MAX_BREAK_EVEN_ROUNDS,
+    MIN_PRICE_SPREAD_PCT,
+    ENABLE_PRICE_SPREAD_FILTER,
+    SCAN_EXCHANGES,
+    DEFAULT_LEVERAGE,
+    MIN_24H_FUNDING_PCT,
+    MIN_7D_FUNDING_PCT,
+    MIN_30D_FUNDING_PCT,
 )
 
 EXCHANGE_KEY_TO_NAME = {
@@ -116,14 +131,27 @@ class FundingArbitrageStrategy(StrategyInterface):
             # Slippage allowance per round (approx 4 legs * slippage_bps)
             slippage_cost = (SLIPPAGE_BPS / 10000) * 4
 
+            # Minimum spread per round filter (percent scale)
+            min_spread_per_round = MIN_SPREAD_PER_ROUND / 100
+            if diff_round < min_spread_per_round and not is_watched:
+                log_skip(
+                    symbol,
+                    f"spread too small: {diff_round*100:.4f}% < {MIN_SPREAD_PER_ROUND:.4f}%"
+                )
+                continue
+
             # Net per round after fees (round = max interval)
             net_per_round = diff_round - fee_per_rotation - slippage_cost
-            
-            # Project Returns for HOLDING strategy:
-            # Revenue = spread per round * rounds per month, Cost = Fee + Slippage (paid once)
-            rounds_per_month = (24 * 30) / round_hours if round_hours else 0
-            monthly_revenue = diff_round * rounds_per_month
-            monthly_net = monthly_revenue - (fee_per_rotation + slippage_cost)
+
+            leverage = DEFAULT_LEVERAGE if DEFAULT_LEVERAGE > 0 else 1.0
+            equity_factor = leverage / 2
+            net_rate_round_equity = diff_round * equity_factor
+            net_rate_hour_equity = (net_rate_round_equity / round_hours) if round_hours else 0.0
+            cost_equity = (fee_per_rotation + slippage_cost) * equity_factor
+
+            fund_24h_pct = (net_rate_hour_equity * 24) - cost_equity
+            fund_7d_pct = (net_rate_hour_equity * 24 * 7) - cost_equity
+            fund_30d_pct = (net_rate_hour_equity * 24 * 30) - cost_equity
             
             # Filter by per-round net (we target positive net per round)
             # Filter by break-even horizon
@@ -142,15 +170,37 @@ class FundingArbitrageStrategy(StrategyInterface):
             net_over_horizon = potential_revenue - total_cost
 
             if net_over_horizon <= 0 and not is_watched:
-                 log_skip(
+                log_skip(
                     symbol,
                     f"net<=0 (max {MAX_BREAK_EVEN_ROUNDS} rnds): spread={diff_round:.6f} cost={total_cost:.6f} net_horizon={net_over_horizon:.6f}"
                 )
-                 continue
+                continue
+
+            min_24h = MIN_24H_FUNDING_PCT / 100
+            min_7d = MIN_7D_FUNDING_PCT / 100
+            min_30d = MIN_30D_FUNDING_PCT / 100
+            if MIN_24H_FUNDING_PCT > 0 and fund_24h_pct < min_24h and not is_watched:
+                log_skip(
+                    symbol,
+                    f"24h funding too low: {fund_24h_pct*100:.4f}% < {MIN_24H_FUNDING_PCT:.4f}%"
+                )
+                continue
+            if MIN_7D_FUNDING_PCT > 0 and fund_7d_pct < min_7d and not is_watched:
+                log_skip(
+                    symbol,
+                    f"7d funding too low: {fund_7d_pct*100:.4f}% < {MIN_7D_FUNDING_PCT:.4f}%"
+                )
+                continue
+            if MIN_30D_FUNDING_PCT > 0 and fund_30d_pct < min_30d and not is_watched:
+                log_skip(
+                    symbol,
+                    f"30d funding too low: {fund_30d_pct*100:.4f}% < {MIN_30D_FUNDING_PCT:.4f}%"
+                )
+                continue
             
             # Check for Negative/Warning for Watchlist
-            if is_watched and monthly_net < 0:
-                warning_msg = "⚠️ WARNING: Net Profit is NEGATIVE!"
+            if is_watched and fund_30d_pct < 0:
+                warning_msg = "?? WARNING: Net Profit is NEGATIVE!"
                 
             # Determine Direction
             if rate_b_round > rate_a_round:
@@ -210,7 +260,7 @@ class FundingArbitrageStrategy(StrategyInterface):
                 spread=diff_round,
                 spread_net=net_per_round,
                 round_return_net=net_per_round,
-                projected_monthly_return=monthly_net,
+                projected_monthly_return=fund_30d_pct,
                 timestamp=int(time.time() * 1000),
                 next_funding_time=next_payout,
                 is_watchlist=is_watched,
@@ -237,3 +287,4 @@ class FundingArbitrageStrategy(StrategyInterface):
         # Sort by profitability
         signals.sort(key=lambda x: x.projected_monthly_return, reverse=True)
         return signals
+

@@ -342,16 +342,17 @@ def main():
                             fund_7d_gross = funding_per_hour * 24 * 7
                             fund_30d_gross = funding_per_hour * 24 * 30
 
-                        one_time_cost = total_costs - price_pnl_slip
+                        # Net 1-time cost = PnL minus fees/slippage/rebalance.
+                        one_time_cost = price_pnl_slip - total_costs
                         if fund_24h_gross is not None:
-                            fund_24h = fund_24h_gross - one_time_cost
-                            fund_7d = fund_7d_gross - one_time_cost
-                            fund_30d = fund_30d_gross - one_time_cost
+                            fund_24h = fund_24h_gross + one_time_cost
+                            fund_7d = fund_7d_gross + one_time_cost
+                            fund_30d = fund_30d_gross + one_time_cost
                             print(f"   [FUND24] {fund_24h:+.4f} USDT (net)")
                             print(f"   [FUND7D] {fund_7d:+.4f} USDT (net)")
                             print(f"   [FUND30] {fund_30d:+.4f} USDT (net)")
                         if one_time_cost is not None:
-                            print(f"   [COST] {one_time_cost:+.4f} USDT (1 time)")
+                            print(f"   [COST] {one_time_cost:+.4f} USDT (SLIP PNL - FEE - REBALANCE)")
                         if auto_close_hit or drawdown_hit:
                             try:
                                 ex_long_obj = exchange_by_name.get(ex_long_name)
@@ -382,29 +383,29 @@ def main():
                         fee_display_text = " | ".join(fee_display_notes)
                         leg_text = leg_ret_info.replace("   [LEG ] ", "").strip() if leg_ret_info else ""
                         live_section_lines = [
-                            f"💹 LIVE {symbol}",
-                            f"   • FUND: {net_funding:+.4f} USDT ({ex_long_name} {fund_long:+.4f}, {ex_short_name} {fund_short:+.4f})",
-                            f"   • PNL: {price_pnl:+.4f} USDT ({pnl_source})",
-                            f"   • SLIP est close: {price_pnl_slip:+.4f} USDT",
-                            f"   • FEE: -{total_costs:.4f} USDT ({fee_display_text}; EST)",
-                            f"   • BAL: {total_equity:.4f} USDT ({ex_long_name} {bal_long:.4f}, {ex_short_name} {bal_short:.4f}, {equity_source})",
-                            f"   • RET: {ret_icon} {ret_pct:+.4f}% of equity",
+                            f"[LIVE] {symbol}",
+                            f"   - FUND: {net_funding:+.4f} USDT ({ex_long_name} {fund_long:+.4f}, {ex_short_name} {fund_short:+.4f})",
+                            f"   - PNL: {price_pnl:+.4f} USDT ({pnl_source})",
+                            f"   - SLIP est close: {price_pnl_slip:+.4f} USDT",
+                            f"   - FEE: -{total_costs:.4f} USDT ({fee_display_text}; EST)",
+                            f"   - BAL: {total_equity:.4f} USDT ({ex_long_name} {bal_long:.4f}, {ex_short_name} {bal_short:.4f}, {equity_source})",
+                            f"   - RET: {ret_icon} {ret_pct:+.4f}% of equity",
                         ]
                         if one_time_cost is not None:
-                            live_section_lines.append(f"   1 Time Cost: {one_time_cost:+.4f} USDT")
+                            live_section_lines.append(f"   - 1 Time Cost: {one_time_cost:+.4f} USDT (SLIP PNL - FEE - REBALANCE)")
                         if leg_text:
-                            live_section_lines.append(f"   • LEG: {leg_text}")
-                        live_section_lines.append(f"   • NET: {net_icon} {net_pnl:+.4f} USDT")
-                        live_section_lines.append(f"   • HOLD: {rounds_held:.2f} rounds (~{held_hours:.2f}h)")
+                            live_section_lines.append(f"   - LEG: {leg_text}")
+                        live_section_lines.append(f"   - NET: {net_icon} {net_pnl:+.4f} USDT")
+                        live_section_lines.append(f"   - HOLD: {rounds_held:.2f} rounds (~{held_hours:.2f}h)")
                         if fund_24h is not None:
-                            live_section_lines.append(f"   • FUND24: {fund_24h:+.4f} USDT")
-                            live_section_lines.append(f"   • FUND7D: {fund_7d:+.4f} USDT")
-                            live_section_lines.append(f"   • FUND30: {fund_30d:+.4f} USDT")
+                            live_section_lines.append(f"   - FUND24: {fund_24h:+.4f} USDT")
+                            live_section_lines.append(f"   - FUND7D: {fund_7d:+.4f} USDT")
+                            live_section_lines.append(f"   - FUND30: {fund_30d:+.4f} USDT")
                         else:
-                            live_section_lines.append("   • FUND24: N/A")
-                            live_section_lines.append("   • FUND7D: N/A")
-                            live_section_lines.append("   • FUND30: N/A")
-                        live_section_lines.append(f"   • Open since {start_time_str}")
+                            live_section_lines.append("   - FUND24: N/A")
+                            live_section_lines.append("   - FUND7D: N/A")
+                            live_section_lines.append("   - FUND30: N/A")
+                        live_section_lines.append(f"   - Open since {start_time_str}")
                         live_sections[symbol] = "\n".join(live_section_lines)
                         live_costs[symbol] = {
                             "one_time_cost": one_time_cost,
@@ -540,7 +541,7 @@ def main():
 
                     if one_time_cost is None and position_value > 0:
                         total_notional = position_value * 2
-                        one_time_cost = total_notional * (fee_per_rotation + slippage_cost) + REBALANCE_FIXED_COST_USDC
+                        one_time_cost = -(total_notional * (fee_per_rotation + slippage_cost) + REBALANCE_FIXED_COST_USDC)
                         one_time_cost_note = "EST"
 
                     cost_text = "N/A"
@@ -561,9 +562,9 @@ def main():
                         fund_7d_gross = funding_per_hour * 24 * 7
                         fund_30d_gross = funding_per_hour * 24 * 30
                         if one_time_cost is not None:
-                            fund_24h_net = fund_24h_gross - one_time_cost
-                            fund_7d_net = fund_7d_gross - one_time_cost
-                            fund_30d_net = fund_30d_gross - one_time_cost
+                            fund_24h_net = fund_24h_gross + one_time_cost
+                            fund_7d_net = fund_7d_gross + one_time_cost
+                            fund_30d_net = fund_30d_gross + one_time_cost
                             if total_equity > 0:
                                 fund_24h_text = f"{fund_24h_net:+.4f} USDT ({(fund_24h_net/total_equity)*100:+.2f}%)"
                                 fund_7d_text = f"{fund_7d_net:+.4f} USDT ({(fund_7d_net/total_equity)*100:+.2f}%)"
