@@ -397,14 +397,6 @@ def main():
                             live_section_lines.append(f"   - LEG: {leg_text}")
                         live_section_lines.append(f"   - NET: {net_icon} {net_pnl:+.4f} USDT")
                         live_section_lines.append(f"   - HOLD: {rounds_held:.2f} rounds (~{held_hours:.2f}h)")
-                        if fund_24h is not None:
-                            live_section_lines.append(f"   - FUND24: {fund_24h:+.4f} USDT")
-                            live_section_lines.append(f"   - FUND7D: {fund_7d:+.4f} USDT")
-                            live_section_lines.append(f"   - FUND30: {fund_30d:+.4f} USDT")
-                        else:
-                            live_section_lines.append("   - FUND24: N/A")
-                            live_section_lines.append("   - FUND7D: N/A")
-                            live_section_lines.append("   - FUND30: N/A")
                         live_section_lines.append(f"   - Open since {start_time_str}")
                         live_sections[symbol] = "\n".join(live_section_lines)
                         live_costs[symbol] = {
