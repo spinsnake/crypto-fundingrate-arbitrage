@@ -21,7 +21,7 @@ SCAN_THRESHOLDS = {
     "min_24h_funding_pct": -2.0,  # 24h funding % of equity (net of 1-time cost)
     "min_7d_funding_pct": 1.0,  # 7d funding % of equity (net of 1-time cost)
     "min_30d_funding_pct": 2.0,  # 30d funding % of equity (net of 1-time cost)
-    "min_spread_per_round_pct": 0.2,  # 0.2% per round (max interval)
+    "min_spread_per_round_pct": 0.02,  # 0.2% per round (max interval)
     "min_volume_aster_usdt": 1000,  # Daily volume filter for Asterdex
     "min_volume_hl_usdt": 500000,  # Daily volume filter for Hyperliquid
     "min_volume_lighter_usdt": LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 50000),
