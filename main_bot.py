@@ -1,6 +1,9 @@
 import time
 import sys
 import math
+import csv
+import os
+import statistics
 from src.adapters.asterdex import AsterdexAdapter
 from src.adapters.hyperliquid import HyperliquidAdapter
 from src.adapters.lighter import LighterAdapter
@@ -31,6 +34,12 @@ EXCHANGE_REGISTRY = {
     "lighter": LighterAdapter,
 }
 
+RATE_HISTORY_CSV = os.path.join("logs", "funding_rate_history.csv")
+RATE_HISTORY_MAX_SAMPLES = 72
+RATE_HISTORY_MAX_GAP_HOURS = 2
+RATE_STABILITY_TOL_FRAC = 0.2
+RATE_STABILITY_MIN_TOL = 0.0001
+RATE_STABILITY_MAX_HOURS = 72.0
 
 def _resolve_scan_exchange_keys() -> list[str]:
     keys = [str(k).lower() for k in SCAN_EXCHANGES]
@@ -39,6 +48,72 @@ def _resolve_scan_exchange_keys() -> list[str]:
         print("[Config] SCAN_EXCHANGES invalid. Using ['hyperliquid', 'asterdex'].")
         return ["hyperliquid", "asterdex"]
     return keys
+
+
+def _load_rate_history_for_symbol(
+    csv_path: str,
+    symbol: str,
+    exchanges: list[str],
+    max_samples: int,
+    max_gap_hours: int,
+) -> dict:
+    if not os.path.exists(csv_path):
+        return {}
+    rows_by_exchange: dict[str, list[tuple[int, float]]] = {}
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                if (row.get("symbol") or "").strip() != symbol:
+                    continue
+                exchange = (row.get("exchange") or "").strip()
+                if exchange not in exchanges:
+                    continue
+                try:
+                    bucket = int(row.get("hour_bucket") or 0)
+                    rate_per_hour = float(row.get("rate_per_hour") or 0.0)
+                except Exception:
+                    continue
+                rows_by_exchange.setdefault(exchange, []).append((bucket, rate_per_hour))
+    except Exception:
+        return {}
+
+    history = {}
+    for exchange, rows in rows_by_exchange.items():
+        rows.sort(key=lambda item: item[0])
+        rates = []
+        last_bucket = None
+        for bucket, rate in rows:
+            if last_bucket is not None and (bucket - last_bucket) > max_gap_hours:
+                rates = []
+            rates.append(rate)
+            last_bucket = bucket
+        if rates:
+            if len(rates) > max_samples:
+                rates = rates[-max_samples:]
+            history[exchange] = rates
+    return history
+
+
+def _estimate_rate_stability(
+    rates: list[float],
+    tol_frac: float = RATE_STABILITY_TOL_FRAC,
+    min_tol: float = RATE_STABILITY_MIN_TOL,
+    max_hours: float = RATE_STABILITY_MAX_HOURS,
+):
+    if not rates or len(rates) < 6:
+        return None, None
+    deltas = [rates[i] - rates[i - 1] for i in range(1, len(rates))]
+    if len(deltas) < 5:
+        return None, None
+    sigma = statistics.pstdev(deltas)
+    current = rates[-1]
+    tol = max(abs(current) * tol_frac, min_tol)
+    if sigma <= 0:
+        return max_hours, tol
+    hours = (tol / sigma) ** 2
+    hours = max(0.0, min(hours, max_hours))
+    return hours, tol
 
 
 def main():
@@ -525,6 +600,28 @@ def main():
                     spread_round = (-rate_long_round) + (rate_short_round)
                     spread_pct = spread_round * 100
 
+                    stability_line = "Stability: N/A"
+                    history = _load_rate_history_for_symbol(
+                        RATE_HISTORY_CSV,
+                        top_signal.symbol,
+                        [ex_a_name, ex_b_name],
+                        RATE_HISTORY_MAX_SAMPLES,
+                        RATE_HISTORY_MAX_GAP_HOURS,
+                    )
+                    if history:
+                        parts = []
+                        for ex_name in (ex_a_name, ex_b_name):
+                            rates = history.get(ex_name)
+                            if rates:
+                                hours, tol = _estimate_rate_stability(rates)
+                                if hours is not None and tol is not None:
+                                    parts.append(f"{ex_name} ~{hours:.1f}h (+/-{tol*100:.4f}%)")
+                                else:
+                                    parts.append(f"{ex_name} N/A")
+                            else:
+                                parts.append(f"{ex_name} N/A")
+                        stability_line = "Stability: " + " | ".join(parts)
+
                     one_time_cost = None
                     one_time_cost_note = ""
                     if live_cost:
@@ -571,24 +668,25 @@ def main():
                     msg_lines = [
                         f"{icon} {top_signal.symbol}{warning_text}",
                         separator,
-                        "💼 Equity:",
+                        "Equity:",
                         f"   {ex_a_name}: {bal_a:.4f} USDT",
                         f"   {ex_b_name}: {bal_b:.4f} USDT",
-                        f"⚖️ Leverage: {DEFAULT_LEVERAGE}x",
-                        f"📊 Position Value: {position_text}",
-                        "💱 Rates (interval):",
-                        f"  • {ex_a_name}: {rate_a*100:.4f}% ({interval_a}h, {ex_a_action})",
-                        f"  • {ex_b_name}: {rate_b*100:.4f}% ({interval_b}h, {ex_b_action})",
-                        f"  • Spread: {spread_pct:+.4f}% ({round_hours}h)",
-                        f"💸 1 Time Cost: {cost_text}",
-                        f"📅 24H Funding: {fund_24h_text}",
-                        f"📅 7D Funding: {fund_7d_text}",
-                        f"📅 30D Funding: {fund_30d_text}",
-                        f"💵 {price_line}",
-                        f"⏳ Min Hold: {break_even_text} to break even",
-                        f"🕰️ {ex_a_name} Payout: in {ex_a_mins_left} mins ({ex_a_bkk} BKK)",
-                        f"🕰️ {ex_b_name} Payout: in {ex_b_mins_left} mins ({ex_b_bkk} BKK)",
-                        f"🎯 Action: {top_signal.direction}",
+                        f"Leverage: {DEFAULT_LEVERAGE}x",
+                        f"Position Value: {position_text}",
+                        "Rates (interval):",
+                        f"  - {ex_a_name}: {rate_a*100:.4f}% ({interval_a}h, {ex_a_action})",
+                        f"  - {ex_b_name}: {rate_b*100:.4f}% ({interval_b}h, {ex_b_action})",
+                        f"  - Spread: {spread_pct:+.4f}% ({round_hours}h)",
+                        stability_line,
+                        f"1 Time Cost: {cost_text}",
+                        f"24H Funding: {fund_24h_text}",
+                        f"7D Funding: {fund_7d_text}",
+                        f"30D Funding: {fund_30d_text}",
+                        price_line,
+                        f"Min Hold: {break_even_text} to break even",
+                        f"{ex_a_name} Payout: in {ex_a_mins_left} mins ({ex_a_bkk} BKK)",
+                        f"{ex_b_name} Payout: in {ex_b_mins_left} mins ({ex_b_bkk} BKK)",
+                        f"Action: {top_signal.direction}",
                         f"   (Long {top_signal.exchange_long} / Short {top_signal.exchange_short})",
                     ]
 

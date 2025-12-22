@@ -25,7 +25,7 @@ SCAN_THRESHOLDS = {
     "min_volume_aster_usdt": 1000,  # Daily volume filter for Asterdex
     "min_volume_hl_usdt": 500000,  # Daily volume filter for Hyperliquid
     "min_volume_lighter_usdt": LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 50000),
-    "min_price_spread_pct": 0.2,  # Minimum favorable price edge between exchanges (%)
+    "min_price_spread_pct": 0.01,  # Minimum favorable price edge between exchanges (%)
     "max_break_even_rounds": 100,  # Max rounds (based on max interval) to break even
 }
 
