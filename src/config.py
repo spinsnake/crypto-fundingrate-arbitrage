@@ -55,7 +55,7 @@ REBALANCE_FIXED_COST_USDC = 1.6  # Flat cost per rebalance transfer (withdraw+ga
 ENABLE_VOLUME_FILTER = True
 ENABLE_DELIST_FILTER = True
 ENABLE_PRICE_SPREAD_FILTER = True
-WATCHLIST = ["RESOLV"] # Symbols to monitor regardless of profit (e.g. ["RESOLV", "ETH"])
+WATCHLIST = [] # Symbols to monitor regardless of profit (e.g. ["RESOLV", "ETH"])
 SCAN_EXCHANGES = ["hyperliquid", "lighter"]  # Options: "hyperliquid", "asterdex", "lighter"
 
 # Execution Settings
