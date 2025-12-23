@@ -59,10 +59,10 @@ WATCHLIST = ["RESOLV"] # Symbols to monitor regardless of profit (e.g. ["RESOLV"
 SCAN_EXCHANGES = ["hyperliquid", "lighter"]  # Options: "hyperliquid", "asterdex", "lighter"
 
 # Execution Settings
-ENABLE_TRADING = True # SAFETY: Start with False (Alert Mode)
+ENABLE_TRADING = False # SAFETY: Start with False (Alert Mode)
 # Auto-close thresholds use integer percent scale (e.g., 20 = 20%)
 AUTO_CLOSE_RET_PCT = 20  # Auto-close if portfolio return >= this percent (0 = disabled)
-AUTO_CLOSE_SIDE_DD_PCT = 10  # Auto-close if any single leg drawdown <= -this percent
+AUTO_CLOSE_SIDE_DD_PCT = 80  # Auto-close if any single leg drawdown <= -this percent
 POLL_INTERVAL = 60 # Check every 60 seconds
 DISCORD_ALERT_INTERVAL = 300  # seconds between Discord alerts (throttled); scan still runs every POLL_INTERVAL
 
