@@ -21,11 +21,11 @@ SCAN_THRESHOLDS = {
     "min_24h_funding_pct": -2.0,  # 24h funding % of equity (net of 1-time cost)
     "min_7d_funding_pct": 1.0,  # 7d funding % of equity (net of 1-time cost)
     "min_30d_funding_pct": 2.0,  # 30d funding % of equity (net of 1-time cost)
-    "min_spread_per_round_pct": 0.02,  # 0.2% per round (max interval)
+    "min_spread_per_round_pct": 0.2,  # 0.2% per round (max interval)
     "min_volume_aster_usdt": 1000,  # Daily volume filter for Asterdex
     "min_volume_hl_usdt": 500000,  # Daily volume filter for Hyperliquid
     "min_volume_lighter_usdt": LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 50000),
-    "min_price_spread_pct": 0.01,  # Minimum favorable price edge between exchanges (%)
+    "min_price_spread_pct": 0.2,  # Minimum favorable price edge between exchanges (%)
     "max_break_even_rounds": 100,  # Max rounds (based on max interval) to break even
 }
 
@@ -55,7 +55,7 @@ REBALANCE_FIXED_COST_USDC = 1.6  # Flat cost per rebalance transfer (withdraw+ga
 ENABLE_VOLUME_FILTER = True
 ENABLE_DELIST_FILTER = True
 ENABLE_PRICE_SPREAD_FILTER = True
-WATCHLIST = [] # Symbols to monitor regardless of profit (e.g. ["RESOLV", "ETH"])
+WATCHLIST = ["RESOLV"] # Symbols to monitor regardless of profit (e.g. ["RESOLV", "ETH"])
 SCAN_EXCHANGES = ["hyperliquid", "lighter"]  # Options: "hyperliquid", "asterdex", "lighter"
 
 # Execution Settings
