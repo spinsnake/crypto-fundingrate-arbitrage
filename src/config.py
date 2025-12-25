@@ -9,7 +9,7 @@ HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
 LIGHTER_API_URL = "https://mainnet.zklighter.elliot.ai"
 
 # Strategy Settings (percent scale, e.g., 2 = 2%)
-LIGHTER_MARKET_STYLE = "mid"  # "major", "mid", "alt", "micro"
+LIGHTER_MARKET_STYLE = "alt"  # "major", "mid", "alt", "micro"
 LIGHTER_VOLUME_PRESETS = {
     "major": 1000000,  # focus on majors only
     "mid": 250000,     # mid-cap liquidity
@@ -21,10 +21,10 @@ SCAN_THRESHOLDS = {
     "min_24h_funding_pct": -2.0,  # 24h funding % of equity (net of 1-time cost)
     "min_7d_funding_pct": 1.0,  # 7d funding % of equity (net of 1-time cost)
     "min_30d_funding_pct": 2.0,  # 30d funding % of equity (net of 1-time cost)
-    "min_spread_per_round_pct": 0.0,  # 0.2% per round (max interval)
+    "min_spread_per_round_pct": 0.02,  # 0.2% per round (max interval)
     "min_volume_aster_usdt": 1000,  # Daily volume filter for Asterdex
-    "min_volume_hl_usdt": 50000,  # Daily volume filter for Hyperliquid
-    "min_volume_lighter_usdt": LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 50000),
+    "min_volume_hl_usdt": 500000,  # Daily volume filter for Hyperliquid
+    "min_volume_lighter_usdt": LIGHTER_VOLUME_PRESETS.get(LIGHTER_MARKET_STYLE, 30000),
     "min_price_spread_pct": 0.02,  # Minimum favorable price edge between exchanges (%)
     "max_break_even_rounds": 100,  # Max rounds (based on max interval) to break even
     "max_break_even_hours": 48,  # Max hours to break even (based on max interval)
@@ -76,7 +76,7 @@ REBALANCE_FIXED_COST_USDC = 1.6  # Flat cost per rebalance transfer (withdraw+ga
 ENABLE_VOLUME_FILTER = True
 ENABLE_DELIST_FILTER = True
 ENABLE_PRICE_SPREAD_FILTER = True
-WATCHLIST = [] # Symbols to monitor regardless of profit (e.g. ["RESOLV", "ETH"])
+WATCHLIST = ["STABLE"] # Symbols to monitor regardless of profit (e.g. ["RESOLV", "ETH"])
 SCAN_EXCHANGES = ["hyperliquid", "lighter"]  # Options: "hyperliquid", "asterdex", "lighter"
 
 # Execution Settings
