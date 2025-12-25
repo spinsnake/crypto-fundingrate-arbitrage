@@ -23,6 +23,7 @@ from ..config import (
     MIN_24H_FUNDING_PCT,
     MIN_7D_FUNDING_PCT,
     MIN_30D_FUNDING_PCT,
+    MAX_BREAK_EVEN_HOURS,
 )
 
 EXCHANGE_KEY_TO_NAME = {
@@ -131,6 +132,13 @@ class FundingArbitrageStrategy(StrategyInterface):
             # Slippage allowance per round (approx 4 legs * slippage_bps)
             slippage_cost = (SLIPPAGE_BPS / 10000) * 4
 
+            break_even_rounds = 999
+            break_even_hours = None
+            if diff_round > 0:
+                rounds_needed = (fee_per_rotation + slippage_cost) / diff_round
+                break_even_rounds = math.ceil(rounds_needed)
+                break_even_hours = break_even_rounds * round_hours
+
             # Minimum spread per round filter (percent scale)
             min_spread_per_round = MIN_SPREAD_PER_ROUND / 100
             if diff_round < min_spread_per_round and not is_watched:
@@ -175,6 +183,14 @@ class FundingArbitrageStrategy(StrategyInterface):
                     f"net<=0 (max {MAX_BREAK_EVEN_ROUNDS} rnds): spread={diff_round:.6f} cost={total_cost:.6f} net_horizon={net_over_horizon:.6f}"
                 )
                 continue
+
+            if MAX_BREAK_EVEN_HOURS > 0 and break_even_hours is not None and not is_watched:
+                if break_even_hours > MAX_BREAK_EVEN_HOURS:
+                    log_skip(
+                        symbol,
+                        f"break-even too slow: {break_even_hours:.2f}h > {MAX_BREAK_EVEN_HOURS:.2f}h"
+                    )
+                    continue
 
             min_24h = MIN_24H_FUNDING_PCT / 100
             min_7d = MIN_7D_FUNDING_PCT / 100
@@ -238,20 +254,6 @@ class FundingArbitrageStrategy(StrategyInterface):
             # Use the later funding time (usually Asterdex 8h) as the target
             next_payout = max(ex_a.next_funding_time, ex_b.next_funding_time)
 
-            # Calculate Break-Even Rounds (Fee / Spread)
-            if diff_round > 0:
-                 # Rounds needed to cover total cost
-                 # Cost = Fee + Slippage
-                 # Revenue per round = diff_round
-                 # Rounds = Cost / diff_round
-                 rounds_needed = (fee_per_rotation + slippage_cost) / diff_round
-                 
-                 # If rounds_needed < 1, it means we profit in first round.
-                 # If rounds_needed is 1.5, we break even in 2nd round.
-                 break_even_rounds = math.ceil(rounds_needed)
-            else:
-                break_even_rounds = 999
-
             signals.append(Signal(
                 symbol=symbol,
                 direction=direction,
@@ -281,7 +283,10 @@ class FundingArbitrageStrategy(StrategyInterface):
                 price_spread_pct=price_edge_pct,
                 price_diff=price_diff,
                 aster_price=price_a,
-                hl_price=price_b
+                hl_price=price_b,
+                fund_24h_pct=fund_24h_pct,
+                fund_7d_pct=fund_7d_pct,
+                fund_30d_pct=fund_30d_pct
             ))
             
         # Sort by profitability

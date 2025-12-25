@@ -23,6 +23,8 @@ from src.config import (
     SLIPPAGE_BPS,
     DEFAULT_LEVERAGE,
     SAFETY_BUFFER,
+    SCAN_SCORE_WEIGHTS,
+    MIN_STABILITY_HOURS,
 )
 from src.core.execution_manager import ExecutionManager
 from src.utils.time_helper import TimeHelper
@@ -95,6 +97,52 @@ def _load_rate_history_for_symbol(
     return history
 
 
+def _load_rate_history_index(
+    csv_path: str,
+    exchanges: list[str],
+    max_samples: int,
+    max_gap_hours: int,
+) -> dict:
+    if not os.path.exists(csv_path):
+        return {}
+    rows_by_symbol: dict[str, dict[str, list[tuple[int, float]]]] = {}
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                symbol = (row.get("symbol") or "").strip()
+                if not symbol:
+                    continue
+                exchange = (row.get("exchange") or "").strip()
+                if exchange not in exchanges:
+                    continue
+                try:
+                    bucket = int(row.get("hour_bucket") or 0)
+                    rate_per_hour = float(row.get("rate_per_hour") or 0.0)
+                except Exception:
+                    continue
+                rows_by_symbol.setdefault(symbol, {}).setdefault(exchange, []).append((bucket, rate_per_hour))
+    except Exception:
+        return {}
+
+    history_index = {}
+    for symbol, rows_by_exchange in rows_by_symbol.items():
+        for exchange, rows in rows_by_exchange.items():
+            rows.sort(key=lambda item: item[0])
+            rates = []
+            last_bucket = None
+            for bucket, rate in rows:
+                if last_bucket is not None and (bucket - last_bucket) > max_gap_hours:
+                    rates = []
+                rates.append(rate)
+                last_bucket = bucket
+            if rates:
+                if len(rates) > max_samples:
+                    rates = rates[-max_samples:]
+                history_index.setdefault(symbol, {})[exchange] = rates
+    return history_index
+
+
 def _estimate_rate_stability(
     rates: list[float],
     tol_frac: float = RATE_STABILITY_TOL_FRAC,
@@ -114,6 +162,110 @@ def _estimate_rate_stability(
     hours = (tol / sigma) ** 2
     hours = max(0.0, min(hours, max_hours))
     return hours, tol
+
+
+def _estimate_half_life_hours(rates: list[float], max_hours: float = RATE_STABILITY_MAX_HOURS) -> float | None:
+    """
+    Simple AR(1)-style half-life estimate:
+    Δr_t = a + φ * r_{t-1} + ε
+    b = 1 + φ
+    half_life = ln(2) / -ln(b)  (only if 0 < b < 1)
+    """
+    if not rates or len(rates) < 12:
+        return None
+    r_prev = rates[:-1]
+    dr = [rates[i] - rates[i - 1] for i in range(1, len(rates))]
+    denom = sum(x * x for x in r_prev)
+    if denom == 0:
+        return None
+    phi = sum(r_prev[i] * dr[i] for i in range(len(dr))) / denom
+    b = 1.0 + phi
+    if b <= 0 or b >= 1:
+        return None
+    half_life = math.log(2) / (-math.log(b))
+    if half_life < 0:
+        return None
+    return min(half_life, max_hours)
+
+
+def _compute_signal_meta(signal, market_data: dict, history_index: dict) -> dict:
+    rate_objs = market_data.get(signal.symbol, {})
+    interval_long = getattr(rate_objs.get(signal.exchange_long), "funding_interval_hours", 8) or 8
+    interval_short = getattr(rate_objs.get(signal.exchange_short), "funding_interval_hours", 8) or 8
+    round_hours = max(interval_long, interval_short)
+    break_even_hours = None
+    if signal.break_even_rounds:
+        break_even_hours = signal.break_even_rounds * round_hours
+
+    stability_by_exchange = {}
+    half_life_by_exchange = {}
+    history = history_index.get(signal.symbol, {})
+    for ex_name in (signal.exchange_long, signal.exchange_short):
+        rates = history.get(ex_name)
+        if rates:
+            hours, tol = _estimate_rate_stability(rates)
+            if hours is not None and tol is not None:
+                stability_by_exchange[ex_name] = (hours, tol)
+            hl = _estimate_half_life_hours(rates)
+            if hl is not None:
+                half_life_by_exchange[ex_name] = hl
+
+    stability_min = None
+    if len(stability_by_exchange) == 2:
+        stability_min = min(value[0] for value in stability_by_exchange.values())
+    half_life_min = None
+    if len(half_life_by_exchange) == 2:
+        half_life_min = min(half_life_by_exchange.values())
+
+    return {
+        "break_even_hours": break_even_hours,
+        "round_hours": round_hours,
+        "stability_by_exchange": stability_by_exchange,
+        "half_life_by_exchange": half_life_by_exchange,
+        "stability_min_hours": stability_min,
+        "half_life_min_hours": half_life_min,
+    }
+
+
+def _score_signal(signal, meta: dict, weights: dict) -> float:
+    weights = weights or {}
+    fund_24h = signal.fund_24h_pct * 100
+    fund_7d = signal.fund_7d_pct * 100
+    fund_30d = signal.fund_30d_pct * 100
+    price_edge = signal.price_spread_pct * 100
+
+    hold_days = 0.0
+    if meta.get("break_even_hours") is not None:
+        hold_days = meta["break_even_hours"] / 24
+
+    stability_min = meta.get("stability_min_hours") or 0.0
+    half_life_min = meta.get("half_life_min_hours") or 0.0
+    stability_norm = min(stability_min, RATE_STABILITY_MAX_HOURS) / RATE_STABILITY_MAX_HOURS
+    half_life_norm = min(half_life_min, RATE_STABILITY_MAX_HOURS) / RATE_STABILITY_MAX_HOURS
+
+    neg_24h_penalty = 0.0
+    if fund_24h < 0:
+        neg_24h_penalty = abs(fund_24h) * weights.get("w_24h_neg_penalty", 0.0)
+
+    low_stability_penalty = 0.0
+    if MIN_STABILITY_HOURS > 0:
+        if meta.get("stability_min_hours") is None:
+            low_stability_penalty = weights.get("w_low_stability_penalty", 0.0)
+        elif stability_min < MIN_STABILITY_HOURS:
+            shortfall = (MIN_STABILITY_HOURS - stability_min) / MIN_STABILITY_HOURS
+            low_stability_penalty = shortfall * weights.get("w_low_stability_penalty", 0.0)
+
+    return (
+        weights.get("w_24h", 0.0) * fund_24h
+        + weights.get("w_7d", 0.0) * fund_7d
+        + weights.get("w_30d", 0.0) * fund_30d
+        + weights.get("w_price_edge", 0.0) * price_edge
+        - weights.get("w_hold_days", 0.0) * hold_days
+        + weights.get("w_stability", 0.0) * stability_norm
+        + weights.get("w_half_life", 0.0) * half_life_norm
+        - neg_24h_penalty
+        - low_stability_penalty
+    )
 
 
 def main():
@@ -151,9 +303,62 @@ def main():
             print(f"[Analysis] Found {len(signals)} opportunities > Threshold")
 
             if signals:
-                watchlist_signals = [s for s in signals if s.is_watchlist]
-                other_signals = [s for s in signals if not s.is_watchlist]
+                exchange_names = [ex.get_name() for ex in exchanges]
+                history_index = _load_rate_history_index(
+                    RATE_HISTORY_CSV,
+                    exchange_names,
+                    RATE_HISTORY_MAX_SAMPLES,
+                    RATE_HISTORY_MAX_GAP_HOURS,
+                )
+                meta_by_symbol = {}
+                score_by_symbol = {}
+                for signal in signals:
+                    meta = _compute_signal_meta(signal, market_data, history_index)
+                    meta_by_symbol[signal.symbol] = meta
+                    score_by_symbol[signal.symbol] = _score_signal(signal, meta, SCAN_SCORE_WEIGHTS)
+                score_scale_by_symbol = {}
+                scores = [
+                    score_by_symbol.get(signal.symbol)
+                    for signal in signals
+                    if score_by_symbol.get(signal.symbol) is not None
+                ]
+                if scores:
+                    min_score = min(scores)
+                    max_score = max(scores)
+                    for signal in signals:
+                        raw = score_by_symbol.get(signal.symbol)
+                        if raw is None:
+                            continue
+                        if max_score == min_score:
+                            scaled = 10.0
+                        else:
+                            scaled = 10 * (raw - min_score) / (max_score - min_score)
+                            scaled = max(0.0, min(scaled, 10.0))
+                        multiplier = 1.0
+                        if signal.fund_24h_pct < 0:
+                            multiplier *= SCAN_SCORE_WEIGHTS.get("m_24h_neg", 1.0)
+                        stability_min = meta_by_symbol.get(signal.symbol, {}).get("stability_min_hours")
+                        if MIN_STABILITY_HOURS > 0:
+                            if stability_min is None or stability_min < MIN_STABILITY_HOURS:
+                                multiplier *= SCAN_SCORE_WEIGHTS.get("m_low_stability", 1.0)
+                        scaled = scaled * multiplier
+                        scaled = max(0.0, min(scaled, 10.0))
+                        score_scale_by_symbol[signal.symbol] = scaled
+
+                watchlist_signals = []
+                scored_others = []
+                for signal in signals:
+                    score = score_by_symbol.get(signal.symbol)
+                    if signal.is_watchlist:
+                        watchlist_signals.append(signal)
+                        continue
+                    if score is not None:
+                        scored_others.append((score, signal))
+
+                scored_others.sort(key=lambda item: item[0], reverse=True)
+                other_signals = [item[1] for item in scored_others]
                 final_signals = watchlist_signals + other_signals
+                print(f"[Analysis] Ranked {len(final_signals)} opportunities by score")
                 live_sections = {}
                 live_horizon_returns = {}
                 live_costs = {}
@@ -203,6 +408,17 @@ def main():
                         sym_data = market_data.get(symbol, {})
                         rate_long = sym_data.get(ex_long_name)
                         rate_short = sym_data.get(ex_short_name)
+                        # Funding edge: short - long (normalized to 8h). Negative => paying net funding now.
+                        funding_spread = None
+                        funding_spread_note = ""
+                        if rate_long and rate_short:
+                            funding_spread = rate_short.rate - rate_long.rate
+                            funding_spread_note = (
+                                f"   [FUND EDGE] short-long: {funding_spread*100:.4f}% "
+                                f"({ex_short_name} {rate_short.rate*100:.4f}% | {ex_long_name} {rate_long.rate*100:.4f}%)"
+                            )
+                            if funding_spread < 0:
+                                funding_spread_note += "  << WARNING: net funding flipped negative"
                         per_round_fee_rate = 0.0
                         if rate_long and rate_long.taker_fee:
                             per_round_fee_rate += rate_long.taker_fee
@@ -356,6 +572,8 @@ def main():
                         print(f"\n[= LIVE =] {symbol}")
                         print(f"   [FUND] {net_funding:+.4f} USDT "
                               f"({ex_long_name} {fund_long:+.4f}, {ex_short_name} {fund_short:+.4f})")
+                        if funding_spread_note:
+                            print(funding_spread_note)
                         print(f"   [PNL ] {price_pnl:+.4f} USDT ({pnl_source})")
                         print(pnl_breakdown)
                         print(f"   [SLIP] {price_pnl_slip:+.4f} USDT (est close w/ slippage)")
@@ -461,11 +679,15 @@ def main():
                             f"[LIVE] {symbol}",
                             f"   - FUND: {net_funding:+.4f} USDT ({ex_long_name} {fund_long:+.4f}, {ex_short_name} {fund_short:+.4f})",
                             f"   - PNL: {price_pnl:+.4f} USDT ({pnl_source})",
+                        ]
+                        if funding_spread_note:
+                            live_section_lines.append(f"   - {funding_spread_note.strip()}")
+                        live_section_lines.extend([
                             f"   - SLIP est close: {price_pnl_slip:+.4f} USDT",
                             f"   - FEE: -{total_costs:.4f} USDT ({fee_display_text}; EST)",
                             f"   - BAL: {total_equity:.4f} USDT ({ex_long_name} {bal_long:.4f}, {ex_short_name} {bal_short:.4f}, {equity_source})",
                             f"   - RET: {ret_icon} {ret_pct:+.4f}% of equity",
-                        ]
+                        ])
                         if one_time_cost is not None:
                             live_section_lines.append(f"   - 1 Time Cost: {one_time_cost:+.4f} USDT (SLIP PNL - FEE - REBALANCE)")
                         if leg_text:
@@ -600,27 +822,34 @@ def main():
                     spread_round = (-rate_long_round) + (rate_short_round)
                     spread_pct = spread_round * 100
 
+                    score_text = "N/A"
+                    if "score_scale_by_symbol" in locals():
+                        scaled_score = score_scale_by_symbol.get(top_signal.symbol)
+                        if scaled_score is not None:
+                            score_text = f"{scaled_score:.1f}/10 (relative, adjusted)"
+
                     stability_line = "Stability: N/A"
-                    history = _load_rate_history_for_symbol(
-                        RATE_HISTORY_CSV,
-                        top_signal.symbol,
-                        [ex_a_name, ex_b_name],
-                        RATE_HISTORY_MAX_SAMPLES,
-                        RATE_HISTORY_MAX_GAP_HOURS,
-                    )
-                    if history:
+                    half_life_line = "Half-life: N/A"
+                    meta = meta_by_symbol.get(top_signal.symbol) if "meta_by_symbol" in locals() else None
+                    if meta:
                         parts = []
-                        for ex_name in (ex_a_name, ex_b_name):
-                            rates = history.get(ex_name)
-                            if rates:
-                                hours, tol = _estimate_rate_stability(rates)
-                                if hours is not None and tol is not None:
-                                    parts.append(f"{ex_name} ~{hours:.1f}h (+/-{tol*100:.4f}%)")
+                        hl_parts = []
+                        stability_by_exchange = meta.get("stability_by_exchange", {})
+                        half_life_by_exchange = meta.get("half_life_by_exchange", {})
+                        if stability_by_exchange or half_life_by_exchange:
+                            for ex_name in (ex_a_name, ex_b_name):
+                                stab = stability_by_exchange.get(ex_name)
+                                if stab:
+                                    parts.append(f"{ex_name} ~{stab[0]:.1f}h (+/-{stab[1]*100:.4f}%)")
                                 else:
                                     parts.append(f"{ex_name} N/A")
-                            else:
-                                parts.append(f"{ex_name} N/A")
-                        stability_line = "Stability: " + " | ".join(parts)
+                                hl = half_life_by_exchange.get(ex_name)
+                                if hl is not None:
+                                    hl_parts.append(f"{ex_name} ~{hl:.1f}h")
+                                else:
+                                    hl_parts.append(f"{ex_name} N/A")
+                            stability_line = "Stability: " + " | ".join(parts)
+                            half_life_line = "Half-life: " + " | ".join(hl_parts)
 
                     one_time_cost = None
                     one_time_cost_note = ""
@@ -677,7 +906,9 @@ def main():
                         f"  - {ex_a_name}: {rate_a*100:.4f}% ({interval_a}h, {ex_a_action})",
                         f"  - {ex_b_name}: {rate_b*100:.4f}% ({interval_b}h, {ex_b_action})",
                         f"  - Spread: {spread_pct:+.4f}% ({round_hours}h)",
+                        f"Score: {score_text}",
                         stability_line,
+                        half_life_line,
                         f"1 Time Cost: {cost_text}",
                         f"24H Funding: {fund_24h_text}",
                         f"7D Funding: {fund_7d_text}",

@@ -20,6 +20,13 @@ class ExecutionManager:
             return ref_price + delta
         return ref_price - delta
 
+    def _is_order_ok(self, res: Dict) -> bool:
+        status = str(res.get("status", "")).lower()
+        if status in ("ok", "success", "filled", "mock_success"):
+            return True
+        resp_status = str(res.get("response", {}).get("status", "")).lower()
+        return resp_status in ("ok", "success", "filled")
+
     def open_spread(
         self,
         symbol: str,
@@ -42,17 +49,114 @@ class ExecutionManager:
         qty_long = notional / long_price
         qty_short = notional / short_price
 
-        res_long = exchange_long.place_order(
-            Order(symbol=symbol, side="BUY", quantity=qty_long, price=long_price, type="LIMIT", leverage=self.leverage)
+        long_order = Order(
+            symbol=symbol,
+            side="BUY",
+            quantity=qty_long,
+            price=long_price,
+            type="LIMIT",
+            leverage=self.leverage,
         )
-        res_short = exchange_short.place_order(
-            Order(symbol=symbol, side="SELL", quantity=qty_short, price=short_price, type="LIMIT", leverage=self.leverage)
+        short_order = Order(
+            symbol=symbol,
+            side="SELL",
+            quantity=qty_short,
+            price=short_price,
+            type="LIMIT",
+            leverage=self.leverage,
         )
 
-        # Log the trade
-        self._log_trade(symbol, "OPEN", exchange_long.get_name(), long_price, qty_long, res_long, exchange_short.get_name(), short_price, qty_short, res_short)
+        long_is_lighter = exchange_long.get_name().lower() == "lighter"
+        short_is_lighter = exchange_short.get_name().lower() == "lighter"
+        first_leg = "long"
+        if short_is_lighter and not long_is_lighter:
+            first_leg = "short"
 
-        return {"long": res_long, "short": res_short}
+        res_long = {"status": "skipped"}
+        res_short = {"status": "skipped"}
+        action = "OPEN"
+        rollback_res = None
+
+        if first_leg == "long":
+            res_long = exchange_long.place_order(long_order)
+            if not self._is_order_ok(res_long):
+                res_short = {"status": "skipped", "error": "first_leg_failed"}
+                action = "OPEN_FAIL"
+                self._log_trade(
+                    symbol,
+                    action,
+                    exchange_long.get_name(),
+                    long_price,
+                    qty_long,
+                    res_long,
+                    exchange_short.get_name(),
+                    short_price,
+                    qty_short,
+                    res_short,
+                )
+                return {"long": res_long, "short": res_short}
+            res_short = exchange_short.place_order(short_order)
+        else:
+            res_short = exchange_short.place_order(short_order)
+            if not self._is_order_ok(res_short):
+                res_long = {"status": "skipped", "error": "first_leg_failed"}
+                action = "OPEN_FAIL"
+                self._log_trade(
+                    symbol,
+                    action,
+                    exchange_long.get_name(),
+                    long_price,
+                    qty_long,
+                    res_long,
+                    exchange_short.get_name(),
+                    short_price,
+                    qty_short,
+                    res_short,
+                )
+                return {"long": res_long, "short": res_short}
+            res_long = exchange_long.place_order(long_order)
+
+        if not self._is_order_ok(res_long) or not self._is_order_ok(res_short):
+            action = "OPEN_PARTIAL"
+            first_exchange = exchange_long if first_leg == "long" else exchange_short
+            first_order = long_order if first_leg == "long" else short_order
+            close_side = "SELL" if first_order.side.upper() == "BUY" else "BUY"
+            book = first_exchange.get_top_of_book(symbol)
+            close_price = self._price_with_slippage(
+                book.get("bid", 0.0) if close_side == "SELL" else book.get("ask", 0.0),
+                close_side,
+            )
+            if close_price > 0:
+                rollback_order = Order(
+                    symbol=symbol,
+                    side=close_side,
+                    quantity=first_order.quantity,
+                    price=close_price,
+                    type="LIMIT",
+                    leverage=self.leverage,
+                    reduce_only=True,
+                )
+                rollback_res = first_exchange.place_order(rollback_order)
+                if self._is_order_ok(rollback_res):
+                    action = "OPEN_ROLLBACK"
+
+        self._log_trade(
+            symbol,
+            action,
+            exchange_long.get_name(),
+            long_price,
+            qty_long,
+            res_long,
+            exchange_short.get_name(),
+            short_price,
+            qty_short,
+            res_short,
+        )
+
+        result = {"long": res_long, "short": res_short}
+        if rollback_res is not None:
+            result["rollback"] = rollback_res
+        return result
 
     def close_spread(
         self,

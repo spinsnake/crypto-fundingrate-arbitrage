@@ -49,6 +49,8 @@ class LighterAdapter(ExchangeInterface):
         self._signer_client = None
         self._auth_token: Optional[str] = None
         self._auth_token_expiry: float = 0.0
+        self._leverage_cache: Dict[int, tuple[float, int]] = {}
+        self.margin_mode = self._load_margin_mode()
 
     def get_name(self) -> str:
         return "Lighter"
@@ -124,6 +126,16 @@ class LighterAdapter(ExchangeInterface):
             return {idx: single_key}
         return {}
 
+    def _load_margin_mode(self) -> int:
+        raw = self._clean_env_value(
+            os.getenv("lighter_margin_mode", "") or os.getenv("LIGHTER_MARGIN_MODE", "")
+        ).lower()
+        if raw in ("isolated", "iso", "1"):
+            return SignerClient.ISOLATED_MARGIN_MODE if SignerClient else 1
+        if raw in ("cross", "crossed", "0"):
+            return SignerClient.CROSS_MARGIN_MODE if SignerClient else 0
+        return SignerClient.CROSS_MARGIN_MODE if SignerClient else 0
+
     def _create_signer_client(self, account_index: int) -> Optional["SignerClient"]:
         if SignerClient is None:
             return None
@@ -145,6 +157,57 @@ class LighterAdapter(ExchangeInterface):
                 )
 
             return asyncio.run(_build())
+
+    def _ensure_leverage(self, market_id: int) -> Optional[str]:
+        if self._signer_client is None:
+            return "missing_signer_client"
+        leverage = float(self.leverage or DEFAULT_LEVERAGE or 1.0)
+        if leverage <= 0:
+            leverage = 1.0
+        margin_mode = self.margin_mode
+        cached = self._leverage_cache.get(market_id)
+        if cached and cached[0] == leverage and cached[1] == margin_mode:
+            return None
+        try:
+            if self.api_key_index is not None:
+                if self.api_key_index not in self.api_private_keys:
+                    return "api_key_index_not_configured"
+                api_key_index, nonce = self._signer_client.nonce_manager.next_nonce(self.api_key_index)
+            else:
+                api_key_index, nonce = self._signer_client.nonce_manager.next_nonce()
+
+            imf = int(10000 / leverage)
+            tx_type, tx_info, tx_hash, err = self._signer_client.sign_update_leverage(
+                market_id,
+                imf,
+                margin_mode,
+                nonce=nonce,
+                api_key_index=api_key_index,
+            )
+            if err:
+                return f"update_leverage_failed:{err}"
+
+            auth_token = self._get_auth_token()
+            files = {
+                "tx_type": (None, str(tx_type)),
+                "tx_info": (None, tx_info),
+            }
+            if auth_token:
+                files["auth"] = (None, auth_token)
+            resp = requests.post(
+                f"{self.base_url}/api/v1/sendTx",
+                files=files,
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return f"update_leverage_sendTx {resp.status_code}: {resp.text}"
+            data = resp.json()
+            if data.get("code") != 200:
+                return f"update_leverage_sendTx_code:{data.get('code')} {data.get('message') or data}"
+            self._leverage_cache[market_id] = (leverage, margin_mode)
+            return None
+        except Exception as e:
+            return f"update_leverage_exception:{e}"
 
     def _get_auth_token(self) -> str:
         now = time.time()
@@ -383,6 +446,10 @@ class LighterAdapter(ExchangeInterface):
         if market_id is None:
             return {"status": "error", "error": "unknown_symbol"}
 
+        leverage_err = self._ensure_leverage(int(market_id))
+        if leverage_err:
+            return {"status": "error", "error": leverage_err}
+
         size_decimals = self._to_int(detail.get("supported_size_decimals", 0))
         price_decimals = self._to_int(detail.get("supported_price_decimals", 0))
         min_base = self._to_float(detail.get("min_base_amount", 0.0))
@@ -441,16 +508,25 @@ class LighterAdapter(ExchangeInterface):
             if err:
                 return {"status": "error", "error": err}
 
+            auth_token = self._get_auth_token()
+            files = {
+                "tx_type": (None, str(tx_type)),
+                "tx_info": (None, tx_info),
+                "price_protection": (None, "true"),
+            }
+            if auth_token:
+                files["auth"] = (None, auth_token)
+
             resp = requests.post(
                 f"{self.base_url}/api/v1/sendTx",
-                files={
-                    "tx_type": (None, str(tx_type)),
-                    "tx_info": (None, tx_info),
-                    "price_protection": (None, "true"),
-                },
+                files=files,
                 timeout=10,
             )
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                return {
+                    "status": "error",
+                    "error": f"sendTx {resp.status_code}: {resp.text}",
+                }
             data = resp.json()
             code = data.get("code")
             status = "ok" if code == 200 else "error"
