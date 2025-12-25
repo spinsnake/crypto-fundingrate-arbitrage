@@ -9,7 +9,7 @@ HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
 LIGHTER_API_URL = "https://mainnet.zklighter.elliot.ai"
 
 # Strategy Settings (percent scale, e.g., 2 = 2%)
-LIGHTER_MARKET_STYLE = "alt"  # "major", "mid", "alt", "micro"
+LIGHTER_MARKET_STYLE = "mid"  # "major", "mid", "alt", "micro"
 LIGHTER_VOLUME_PRESETS = {
     "major": 1000000,  # focus on majors only
     "mid": 250000,     # mid-cap liquidity
