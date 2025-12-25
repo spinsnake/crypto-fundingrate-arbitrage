@@ -45,6 +45,9 @@ class Signal:
     price_diff: float = 0.0  # HL mark - Aster mark
     aster_price: float = 0.0
     hl_price: float = 0.0
+    fund_24h_pct: float = 0.0
+    fund_7d_pct: float = 0.0
+    fund_30d_pct: float = 0.0
 
 @dataclass
 class Order:

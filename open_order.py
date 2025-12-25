@@ -15,7 +15,7 @@ from src.adapters.lighter import LighterAdapter  # noqa: E402
 from src.core.execution_manager import ExecutionManager  # noqa: E402
 from src.config import DEFAULT_LEVERAGE, SAFETY_BUFFER  # noqa: E402
 
-SYMBOL = "RESOLV"
+SYMBOL = "MEGA"
 # Fallback notional if balances not available
 NOTIONAL_FALLBACK = 560  # per leg in quote
 DIRECTION = "LONG_LIGHTER_SHORT_HL"  # See DIRECTION_MAP for options
